@@ -16,6 +16,7 @@ export interface ProviderDef {
   id: string;                         // loader/proxy provider name (handler discovery + Providers tab)
   label: string;
   opencodeProvider?: string;          // opencode provider id to attach models to (default "anthropic")
+  opencodeNpm?: string;               // SDK package for a custom (non-built-in) opencode provider
   models: Record<string, ProviderModel>;
   handle: (request: Request, ctx: ProviderCtx) => Promise<Response>;
 }

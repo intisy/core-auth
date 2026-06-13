@@ -1,9 +1,7 @@
 // @ts-nocheck
-// OpenCode integration for a provider. On plugin load it merges the provider's
-// models into the active opencode config, then returns an @opencode-ai/plugin
-// auth hook whose loader supplies a fetch that calls the provider's handle().
-// OpenCode routes a provider through that fetch once an auth entry exists, so an
-// `api` auth method is registered for a no-key `oc auth login`. No proxy/baseURL.
+// OpenCode integration: merge the provider's models into opencode config and
+// return the auth hook whose loader.fetch calls handle(). The `api` method
+// exists so a no-key `oc auth login` makes opencode route through our loader.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
@@ -27,13 +25,15 @@ function stripJsonc(text: string): string {
     .replace(/,(\s*[}\]])/g, "$1");
 }
 
-function mergeModels(opencodeProvider: string, models: Record<string, unknown>): void {
+function mergeModels(opencodeProvider: string, models: Record<string, unknown>, npm?: string): void {
   const path = opencodeConfigPath();
   let config: Record<string, any> = {};
   try { if (existsSync(path)) config = JSON.parse(stripJsonc(readFileSync(path, "utf8"))); } catch {}
   if (!config.$schema) config.$schema = "https://opencode.ai/config.json";
   config.provider = config.provider || {};
   config.provider[opencodeProvider] = config.provider[opencodeProvider] || {};
+  // a custom (non-built-in) provider needs an SDK to parse the response
+  if (npm) config.provider[opencodeProvider].npm = npm;
   const existing = config.provider[opencodeProvider].models || {};
   config.provider[opencodeProvider].models = { ...existing, ...models };
   try {
@@ -45,7 +45,7 @@ function mergeModels(opencodeProvider: string, models: Record<string, unknown>):
 export function createOpencodePlugin(def) {
   const opencodeProvider = def.opencodeProvider || "anthropic";
   return async function () {
-    try { mergeModels(opencodeProvider, def.models || {}); } catch {}
+    try { mergeModels(opencodeProvider, def.models || {}, def.opencodeNpm); } catch {}
     return {
       auth: {
         provider: opencodeProvider,
