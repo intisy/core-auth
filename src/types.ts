@@ -20,3 +20,27 @@ export interface ProviderDef {
   models: Record<string, ProviderModel>;
   handle: (request: Request, ctx: ProviderCtx) => Promise<Response>;
 }
+
+// One account in the generic pool. OAuth creds + generic rate-limit "lanes" +
+// cooldown are first-class; everything provider-specific lives in `meta`.
+export interface CoreAccount {
+  id: string;                         // stable identity (usually the account email)
+  email?: string;
+  refresh: string;                    // OAuth refresh token (the durable credential)
+  access?: string;                    // cached access token
+  expires?: number;                   // access token expiry, epoch ms
+  addedAt?: number;
+  lastUsed?: number;
+  enabled?: boolean;                  // user-disabled accounts are skipped by selection
+  rateLimitResetTimes?: Record<string, number>;  // lane -> epoch ms the lane is rate-limited until
+  coolingDownUntil?: number;          // epoch ms; transient backoff across all lanes
+  cooldownReason?: string | null;
+  meta?: Record<string, unknown>;     // provider extras (project ids, fingerprint, quota…), opaque to the harness
+}
+
+// The on-disk pool for one provider.
+export interface AccountPool {
+  accounts: CoreAccount[];
+  activeIndex: number;                // sticky selection when no lane is given
+  activeIndexByLane?: Record<string, number>;
+}
