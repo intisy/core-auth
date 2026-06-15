@@ -1,0 +1,3 @@
+[submodule "sync-bridge"]
+	path = sync-bridge
+	url = https://github.com/intisy/sync-bridge.git

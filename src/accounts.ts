@@ -13,6 +13,20 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, openSyn
 import { join } from "path";
 import { randomBytes } from "crypto";
 import { configFolder } from "./env.js";
+import { syncAccounts as crossAppSync } from "./accountsync.js";
+
+let pulledOnce = false;
+
+// cross-app sync applies only to the default store location; a custom opts.dir/
+// opts.file (e.g. tests) must never trigger a sync of the standard account file.
+function isDefaultStore(opts) {
+  return !opts || (!opts.dir && !opts.file);
+}
+
+function maybeSync(opts) {
+  if (!isDefaultStore(opts)) return;
+  try { crossAppSync(); } catch {}
+}
 
 const DEFAULT_FILE = "core-auth-accounts.json";
 const LOCK_STALE_MS = 15 * 1000;
@@ -84,6 +98,8 @@ function poolFrom(store, provider) {
 
 // the full pool for one provider: { accounts, activeIndex, activeIndexByLane }
 export function loadAccounts(provider, opts) {
+  // one pull per process so a reader picks up accounts added by the other app
+  if (!pulledOnce && isDefaultStore(opts)) { pulledOnce = true; maybeSync(opts); }
   return poolFrom(readStore(opts), provider);
 }
 
@@ -99,25 +115,28 @@ export function saveAccounts(provider, pool, opts) {
     };
     writeStore(store, opts);
   });
+  maybeSync(opts);
 }
 
 // atomic read-modify-write for one provider's pool. `mutator(pool)` mutates the
 // freshly-read pool in place; returns the resulting pool.
 export function updateAccounts(provider, mutator, opts) {
-  return withLock(opts, () => {
+  const pool = withLock(opts, () => {
     const store = readStore(opts);
     store.version = 1;
     store.providers = store.providers || {};
-    const pool = poolFrom(store, provider);
-    mutator(pool);
+    const current = poolFrom(store, provider);
+    mutator(current);
     store.providers[provider] = {
-      accounts: pool.accounts || [],
-      activeIndex: pool.activeIndex || 0,
-      activeIndexByLane: pool.activeIndexByLane || {},
+      accounts: current.accounts || [],
+      activeIndex: current.activeIndex || 0,
+      activeIndexByLane: current.activeIndexByLane || {},
     };
     writeStore(store, opts);
-    return pool;
+    return current;
   });
+  maybeSync(opts);
+  return pool;
 }
 
 export function listAccounts(provider, opts) { return loadAccounts(provider, opts).accounts; }
