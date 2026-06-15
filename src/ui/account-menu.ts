@@ -57,6 +57,7 @@ export async function runAccountMenu(controller, opts) {
       });
     }
     items.push({ label: "", value: { type: "noop" }, separator: true });
+    if (views.length > 0) items.push({ label: "Delete all accounts", value: { type: "delete-all" }, color: "red" });
     items.push({ label: "Done", value: { type: "done" } });
 
     const action = await select(items, { message: `${label} accounts`, subtitle: "Select an action or account", clearScreen: true });
@@ -64,6 +65,7 @@ export async function runAccountMenu(controller, opts) {
     if (action.type === "add") { try { await controller.login(); } catch (error) { process.stderr.write(String(error) + "\n"); } }
     else if (action.type === "quota") { try { await controller.refreshQuota(); } catch {} }
     else if (action.type === "action") { try { await extraActions[action.index].run(); } catch (error) { process.stderr.write(String(error) + "\n"); } }
+    else if (action.type === "delete-all") { if (await confirm("Delete ALL accounts? This cannot be undone.")) for (const view of controller.list()) controller.remove(view.id); }
     else if (action.type === "account") await accountDetails(controller, action.view);
   }
 }
