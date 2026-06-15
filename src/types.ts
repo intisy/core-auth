@@ -23,6 +23,8 @@ export interface ProviderDef {
   // the flow and persists a CoreAccount. When present, core exposes an opencode
   // oauth auth method (and a Claude-side CLI can call it too).
   loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: () => Promise<CoreAccount | null> }>;
+  // the provider's account controller — the shared core TUI renders what it returns
+  accounts?: AccountController;
 }
 
 // One account in the generic pool. OAuth creds + generic rate-limit "lanes" +
@@ -47,4 +49,35 @@ export interface AccountPool {
   accounts: CoreAccount[];
   activeIndex: number;                // sticky selection when no lane is given
   activeIndexByLane?: Record<string, number>;
+}
+
+export type AccountStatus = "active" | "rate-limited" | "cooling-down" | "verification-required" | "disabled";
+
+export interface AccountQuota {
+  label?: string;                     // lane / model / family this quota is for
+  usedFraction?: number;              // 0..1
+  remainingFraction?: number;         // 0..1
+  resetTime?: string | number;
+}
+
+// A presentation-only view of one account. The shared core TUI renders this; it
+// holds no account logic of its own.
+export interface AccountView {
+  id: string;
+  email?: string;
+  status: AccountStatus;
+  enabled: boolean;
+  lastUsed?: number;
+  detail?: string;                    // human-readable status note ("rate-limited 12m")
+  quota?: AccountQuota[];
+}
+
+// Implemented by the PROVIDER (it controls all account data + behavior); consumed
+// by the shared core TUI, which only presents what these return.
+export interface AccountController {
+  list(): AccountView[];
+  enable(id: string, on: boolean): void;
+  remove(id: string): void;
+  login(): Promise<AccountView | null>;
+  refreshQuota?(): Promise<void>;
 }

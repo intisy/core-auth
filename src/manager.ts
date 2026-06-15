@@ -5,7 +5,7 @@
 // what a "lane" means, how to parse rate-limit resets, and any extra availability
 // rule); it never touches storage, opencode, claude code, or the loader.
 
-import { loadAccounts, saveAccounts, updateAccounts } from "./accounts.js";
+import { loadAccounts, saveAccounts, updateAccounts, removeAccount } from "./accounts.js";
 import { selectIndex } from "./selection.js";
 import { isAvailable as builtinAvailable, availableAt, calculateBackoffMs } from "./ratelimit.js";
 import { accessTokenExpired, refreshAccessToken, TokenRefreshError } from "./oauth.js";
@@ -111,5 +111,9 @@ export class AccountManager {
       const account = pool.accounts.find((candidate) => candidate.id === id);
       if (account) fn(account);
     }, this.store);
+  }
+
+  remove(id) {
+    removeAccount(this.providerId, id, this.store);
   }
 }

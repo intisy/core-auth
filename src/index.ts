@@ -7,6 +7,7 @@ export { isOAuthAuth, accessTokenExpired, calculateTokenExpiry, refreshAccessTok
 export { startOAuthListener } from "./server.js";
 export { loadAccounts, saveAccounts, updateAccounts, listAccounts, addAccount, removeAccount, clearAccounts, migrateLegacy } from "./accounts.js";
 export { AccountManager } from "./manager.js";
+export { accountControllerFromManager } from "./controller.js";
 export { isAvailable, availableAt, isLaneRateLimited, isCoolingDown, isEnabled, calculateBackoffMs } from "./ratelimit.js";
 export { selectIndex } from "./selection.js";
 export { getConfigDir, configFolder, reposDir } from "./env.js";
