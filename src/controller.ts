@@ -1,8 +1,5 @@
 // @ts-nocheck
-// Helper that turns an AccountManager into an AccountController so providers don't
-// re-implement list/enable/remove. The PROVIDER stays in control: it supplies how
-// an account maps to status / quota / detail and the login flow; core only iterates
-// the store and shapes the presentation views the shared TUI renders.
+// Turns an AccountManager into an AccountController so providers don't re-implement list/enable/remove; the provider supplies status/quota/detail/login.
 
 import { isCoolingDown } from "./ratelimit.js";
 

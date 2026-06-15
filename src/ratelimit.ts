@@ -1,7 +1,5 @@
 // @ts-nocheck
-// Generic availability + backoff math over CoreAccounts. "Lanes" are arbitrary
-// strings a driver uses to partition rate limits (e.g. one lane per upstream
-// model family). Nothing here knows about any specific provider.
+// Generic availability + backoff math; "lanes" are arbitrary strings a driver uses to partition rate limits.
 
 export function isEnabled(account) {
   return account.enabled !== false;
@@ -17,7 +15,6 @@ export function isLaneRateLimited(account, lane, now) {
   return typeof until === "number" && until > now;
 }
 
-// enabled, not in global cooldown, and (no lane given OR that lane is free)
 export function isAvailable(account, lane, now) {
   if (!isEnabled(account)) return false;
   if (isCoolingDown(account, now)) return false;
@@ -36,7 +33,6 @@ export function availableAt(account, lane, now) {
   return Math.max(t, now);
 }
 
-// exponential backoff, capped, with optional full jitter
 export function calculateBackoffMs(attempt, opts) {
   const base = (opts && opts.baseMs) || 1000;
   const max = (opts && opts.maxMs) || 5 * 60 * 1000;

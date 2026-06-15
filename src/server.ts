@@ -1,7 +1,5 @@
 // @ts-nocheck
-// Generic local HTTP listener for an OAuth redirect. The driver passes its own
-// redirect URI (which sets the port + callback path); everything else — env
-// detection, bind address, the success page — is provider-neutral.
+// Generic local HTTP listener for an OAuth redirect; the driver passes its own redirect URI (port + callback path).
 
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
@@ -54,8 +52,7 @@ function successPage() {
     "<p>Authentication succeeded. You can close this tab and return to your terminal.</p></div></body></html>";
 }
 
-// Listen for the OAuth redirect at the driver's redirectUri; resolve with the
-// captured callback URL.  opts: { timeoutMs }
+// opts: { timeoutMs }
 export async function startOAuthListener(redirectUriString, opts) {
   const options = opts || {};
   const timeoutMs = options.timeoutMs || 5 * 60 * 1000;

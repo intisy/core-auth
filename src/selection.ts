@@ -1,9 +1,5 @@
 // @ts-nocheck
-// Pick an account index from a pool given current availability. Strategies:
-//   "sticky"       keep using the cursor (per lane) until it goes unavailable
-//   "round-robin"  advance to the next available index every call
-//   "hybrid"       sticky, but when nobody is free pick whoever frees up soonest
-// The cursor is per-lane when a lane is given, otherwise the pool-wide activeIndex.
+// Pick an account index given availability. Strategies: sticky (keep cursor until unavailable), round-robin (advance each call), hybrid (sticky, but fall back to whoever frees up soonest). Cursor is per-lane when a lane is given.
 
 import { isAvailable as builtinAvailable, availableAt } from "./ratelimit.js";
 
@@ -30,7 +26,7 @@ function firstAvailableFrom(pool, start, lane, now, available) {
   return -1;
 }
 
-// soonest-free account, used as the hybrid fallback so the caller can wait
+// soonest-free account, the hybrid fallback so the caller can wait
 function soonestFree(pool, lane, now) {
   let best = -1, bestAt = Infinity;
   for (let i = 0; i < pool.accounts.length; i++) {
@@ -40,10 +36,7 @@ function soonestFree(pool, lane, now) {
   return best;
 }
 
-// returns the chosen index (mutating the cursor), or -1 if the pool is empty.
-// for sticky/round-robin a -1 means "none currently available"; hybrid instead
-// returns the soonest-free index even when it is not yet usable. `available`
-// (default = the built-in predicate) lets a driver add extra skip conditions.
+// sticky/round-robin return -1 when none are currently available; hybrid instead returns the soonest-free index even when not yet usable.
 export function selectIndex(pool, lane, now, strategy, available) {
   const n = pool.accounts.length;
   if (n === 0) return -1;

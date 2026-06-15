@@ -1,7 +1,5 @@
 // @ts-nocheck
-// Generic OAuth helpers + token refresh shared by provider drivers. The driver
-// supplies its own tokenUrl / clientId / clientSecret — no provider specifics
-// live here. Cache/project side-effects are the driver's concern.
+// Generic OAuth helpers + token refresh; the driver supplies its own tokenUrl/clientId/clientSecret.
 
 const ACCESS_TOKEN_EXPIRY_BUFFER_MS = 60 * 1000;
 
@@ -51,9 +49,7 @@ function parseOAuthError(text) {
   } catch { return { description: text }; }
 }
 
-// exchange a refresh token for a fresh access token at the driver's tokenUrl.
-// opts: { tokenUrl, clientId, clientSecret?, extraParams? }
-// returns { access, expires, refresh } or throws TokenRefreshError.
+// opts: { tokenUrl, clientId, clientSecret?, extraParams? }; returns { access, expires, refresh } or throws TokenRefreshError.
 export async function refreshAccessToken(refreshToken, opts) {
   if (!refreshToken) return undefined;
   const startTime = Date.now();

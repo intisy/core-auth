@@ -1,7 +1,5 @@
 // @ts-nocheck
-// OpenCode integration: merge the provider's models into opencode config and
-// return the auth hook whose loader.fetch calls handle(). The `api` method
-// exists so a no-key `oc auth login` makes opencode route through our loader.
+// OpenCode integration: merge the provider's models into opencode config and return the auth hook whose loader.fetch calls handle().
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
@@ -43,11 +41,7 @@ function mergeModels(opencodeProvider: string, models: Record<string, unknown>, 
   } catch (e) { log("opencode model merge failed: " + (e && e.message)); }
 }
 
-// The auth methods opencode shows under `oc auth login`. When the driver provides
-// a loginFlow, core owns the entire OAuth TUI: authorize() hands opencode the URL
-// + instructions, callback() waits for the driver flow to finish and persists the
-// account. Otherwise we fall back to a no-key api method (just makes opencode route
-// through loader.fetch, using accounts already in the core store).
+// With a driver loginFlow, core owns the OAuth TUI; otherwise the no-key api method just makes opencode route through loader.fetch using existing accounts.
 function authMethods(def) {
   if (typeof def.loginFlow !== "function") {
     return [{ label: def.label + " (via core-auth)", type: "api" }];
@@ -77,12 +71,9 @@ export function createOpencodePlugin(def) {
   const opencodeProvider = def.opencodeProvider || "anthropic";
   return async function (input) {
     try { mergeModels(opencodeProvider, def.models || {}, def.opencodeNpm); } catch {}
-    // let the driver do load-time prep (e.g. migrate a legacy account file) so the
-    // account check below reflects the real pool
+    // driver load-time prep (e.g. legacy migration) must run before the account check below reflects the real pool
     try { if (typeof def.onLoad === "function") await def.onLoad({ configDir: getConfigDir(), log }); } catch (e) { log("onLoad failed: " + e); }
-    // auto-route: when accounts already exist, seed opencode's auth entry so it
-    // routes through our loader WITHOUT the user running `oc auth login`. OAuth is
-    // then only needed to ADD a new account.
+    // when accounts already exist, seed opencode's auth entry so it routes through our loader without the user running `oc auth login`
     try {
       const client = input && input.client;
       if (client && client.auth && listAccounts(def.id).length > 0) {

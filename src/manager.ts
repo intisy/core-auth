@@ -1,9 +1,5 @@
 // @ts-nocheck
-// AccountManager: the generic multi-account engine a driver gets for free.
-// Storage + selection + rate-limit/cooldown state + OAuth token refresh, all over
-// generic CoreAccounts. The driver supplies only its OAuth config (and decides
-// what a "lane" means, how to parse rate-limit resets, and any extra availability
-// rule); it never touches storage, opencode, claude code, or the loader.
+// AccountManager: the generic multi-account engine (storage, selection, rate-limit/cooldown, OAuth refresh) a driver gets for free.
 
 import { loadAccounts, saveAccounts, updateAccounts, removeAccount } from "./accounts.js";
 import { selectIndex } from "./selection.js";
@@ -18,7 +14,6 @@ export class AccountManager {
     this.oauth = options.oauth || null;       // { tokenUrl, clientId, clientSecret?, extraParams? }
     this.backoff = options.backoff || {};     // { baseMs?, maxMs?, jitter? }
     this.store = options.store || null;       // { dir?, file? } store location override
-    // extra driver skip rule, composed with the built-in availability check
     this.extraAvailable = typeof options.isAvailable === "function" ? options.isAvailable : null;
     this.available = (account, lane, now) =>
       builtinAvailable(account, lane, now) && (!this.extraAvailable || this.extraAvailable(account, lane, now));
@@ -28,10 +23,7 @@ export class AccountManager {
   save(pool) { saveAccounts(this.providerId, pool, this.store); }
   list() { return this.load().accounts; }
 
-  // pick the best account for `lane` and return a usable access token, refreshing
-  // it if expired. returns { account, access } or null when none are available.
-  // selection + the lastUsed claim happen under the store lock; the (network)
-  // token refresh runs outside it so a slow refresh never blocks other writers.
+  // selection + lastUsed claim run under the store lock; the network token refresh runs outside it so a slow refresh never blocks other writers.
   async acquire(lane) {
     const now = Date.now();
     let claimedId = null;
@@ -49,7 +41,6 @@ export class AccountManager {
     return { account, access };
   }
 
-  // fresh access token for one account, refreshing + persisting when expired.
   // a revoked refresh token disables the account so selection skips it.
   async ensureAccess(id) {
     const account = this.load().accounts.find((candidate) => candidate.id === id);
@@ -72,8 +63,6 @@ export class AccountManager {
     }
   }
 
-  // mark a lane rate-limited until `resetMs` (epoch ms). the driver computes
-  // resetMs from its own error body, then calls this.
   reportRateLimit(id, lane, resetMs) {
     this.mutate(id, (account) => {
       account.rateLimitResetTimes = account.rateLimitResetTimes || {};
@@ -81,7 +70,6 @@ export class AccountManager {
     });
   }
 
-  // transient failure -> exponential backoff cooldown across all lanes
   reportError(id, attempt, reason) {
     const ms = calculateBackoffMs(attempt || 0, this.backoff);
     this.mutate(id, (account) => {
@@ -98,7 +86,6 @@ export class AccountManager {
     });
   }
 
-  // soonest epoch ms any account is usable for `lane`, for the caller to wait on
   nextAvailableAt(lane) {
     const now = Date.now();
     let best = Infinity;

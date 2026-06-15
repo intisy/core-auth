@@ -1,6 +1,5 @@
 // @ts-nocheck
-// The provider contract. A provider plugin supplies one of these and lets
-// core-auth do all the OpenCode / Claude Code / loader integration.
+// The provider contract: a plugin supplies one of these and core-auth does all the app/loader integration.
 
 export interface ProviderCtx {
   configDir: string;
@@ -19,35 +18,28 @@ export interface ProviderDef {
   opencodeNpm?: string;               // SDK package for a custom (non-built-in) opencode provider
   models: Record<string, ProviderModel>;
   handle: (request: Request, ctx: ProviderCtx) => Promise<Response>;
-  // optional OAuth login: returns the authorize URL + a complete() that finishes
-  // the flow and persists a CoreAccount. When present, core exposes an opencode
-  // oauth auth method (and a Claude-side CLI can call it too).
+  // when present, core exposes an opencode oauth method; complete() persists the CoreAccount
   loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: () => Promise<CoreAccount | null> }>;
-  // the provider's account controller — the shared core TUI renders what it returns
   accounts?: AccountController;
-  // optional load-time prep (e.g. migrate a legacy account file); core calls this
-  // when the opencode plugin loads, before deciding whether to auto-route.
+  // load-time prep (e.g. legacy migration); runs before auto-route is decided
   onLoad?: (ctx: ProviderCtx) => void | Promise<void>;
 }
 
-// One account in the generic pool. OAuth creds + generic rate-limit "lanes" +
-// cooldown are first-class; everything provider-specific lives in `meta`.
 export interface CoreAccount {
   id: string;                         // stable identity (usually the account email)
   email?: string;
   refresh: string;                    // OAuth refresh token (the durable credential)
-  access?: string;                    // cached access token
-  expires?: number;                   // access token expiry, epoch ms
+  access?: string;
+  expires?: number;                   // epoch ms
   addedAt?: number;
   lastUsed?: number;
   enabled?: boolean;                  // user-disabled accounts are skipped by selection
   rateLimitResetTimes?: Record<string, number>;  // lane -> epoch ms the lane is rate-limited until
   coolingDownUntil?: number;          // epoch ms; transient backoff across all lanes
   cooldownReason?: string | null;
-  meta?: Record<string, unknown>;     // provider extras (project ids, fingerprint, quota…), opaque to the harness
+  meta?: Record<string, unknown>;     // provider extras, opaque to the harness
 }
 
-// The on-disk pool for one provider.
 export interface AccountPool {
   accounts: CoreAccount[];
   activeIndex: number;                // sticky selection when no lane is given
@@ -63,8 +55,7 @@ export interface AccountQuota {
   resetTime?: string | number;
 }
 
-// A presentation-only view of one account. The shared core TUI renders this; it
-// holds no account logic of its own.
+// Presentation-only view rendered by the shared core TUI.
 export interface AccountView {
   id: string;
   email?: string;
@@ -75,8 +66,7 @@ export interface AccountView {
   quota?: AccountQuota[];
 }
 
-// Implemented by the PROVIDER (it controls all account data + behavior); consumed
-// by the shared core TUI, which only presents what these return.
+// Implemented by the provider; consumed by the shared core TUI.
 export interface AccountController {
   list(): AccountView[];
   enable(id: string, on: boolean): void;

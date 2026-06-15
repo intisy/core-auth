@@ -1,13 +1,5 @@
 // @ts-nocheck
-// Generic per-provider account store. The harness is provider-agnostic: a
-// CoreAccount holds OAuth creds + generic rate-limit "lanes" + cooldown, plus an
-// opaque `meta` blob carrying any provider extras (project ids, fingerprints,
-// quota, verification…). One file, keyed by provider id. AccountManager (the
-// selection/rotation/rate-limit engine) is layered on top of this store.
-//
-// Writes go through a lightweight cross-process lock + atomic temp-rename so the
-// running plugin and a separate CLI can mutate the pool without losing updates.
-// `opts` ({ dir, file }) lets a provider redirect the store location.
+// Generic per-provider account store, keyed by provider id; writes use a cross-process lock + atomic temp-rename so plugin and CLI don't clobber each other.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, openSync, closeSync, unlinkSync, statSync } from "fs";
 import { join } from "path";
@@ -17,8 +9,7 @@ import { syncAccounts as crossAppSync } from "./accountsync.js";
 
 let pulledOnce = false;
 
-// cross-app sync applies only to the default store location; a custom opts.dir/
-// opts.file (e.g. tests) must never trigger a sync of the standard account file.
+// cross-app sync applies only to the default store; a custom dir/file (e.g. tests) must not sync the standard account file.
 function isDefaultStore(opts) {
   return !opts || (!opts.dir && !opts.file);
 }
@@ -46,8 +37,7 @@ function sleepSync(ms) {
   try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch {}
 }
 
-// best-effort exclusive lock around `fn`; degrades to running unlocked rather
-// than deadlocking if the lock can never be acquired.
+// best-effort exclusive lock; degrades to running unlocked rather than deadlocking if it can't be acquired.
 function withLock(opts, fn) {
   ensureDir(opts);
   const lockPath = storeFile(opts) + ".lock";
@@ -57,11 +47,11 @@ function withLock(opts, fn) {
     try {
       handle = openSync(lockPath, "wx");
     } catch (error) {
-      if (!error || error.code !== "EEXIST") break;          // unexpected error -> proceed unlocked
+      if (!error || error.code !== "EEXIST") break;
       try {
         if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) { unlinkSync(lockPath); continue; }
       } catch {}
-      if (Date.now() > deadline) break;                       // gave up waiting -> proceed unlocked
+      if (Date.now() > deadline) break;
       sleepSync(LOCK_POLL_MS);
     }
   }
@@ -96,7 +86,6 @@ function poolFrom(store, provider) {
   return { accounts: p.accounts, activeIndex: p.activeIndex || 0, activeIndexByLane: p.activeIndexByLane || {} };
 }
 
-// the full pool for one provider: { accounts, activeIndex, activeIndexByLane }
 export function loadAccounts(provider, opts) {
   // one pull per process so a reader picks up accounts added by the other app
   if (!pulledOnce && isDefaultStore(opts)) { pulledOnce = true; maybeSync(opts); }
@@ -118,8 +107,7 @@ export function saveAccounts(provider, pool, opts) {
   maybeSync(opts);
 }
 
-// atomic read-modify-write for one provider's pool. `mutator(pool)` mutates the
-// freshly-read pool in place; returns the resulting pool.
+// atomic read-modify-write: mutator mutates the freshly-read pool in place.
 export function updateAccounts(provider, mutator, opts) {
   const pool = withLock(opts, () => {
     const store = readStore(opts);
@@ -141,7 +129,6 @@ export function updateAccounts(provider, mutator, opts) {
 
 export function listAccounts(provider, opts) { return loadAccounts(provider, opts).accounts; }
 
-// upsert by id (or by refresh token when id is absent)
 export function addAccount(provider, account, opts) {
   updateAccounts(provider, (pool) => {
     const i = pool.accounts.findIndex((a) => (account.id && a.id === account.id) || (account.refresh && a.refresh === account.refresh));
@@ -156,9 +143,7 @@ export function removeAccount(provider, id, opts) {
 
 export function clearAccounts(provider, opts) { saveAccounts(provider, emptyPool(), opts); }
 
-// one-time import of a provider's legacy on-disk store into this generic store.
-// `mapAccount(legacyEntry) -> CoreAccount | null` is provider-supplied so the
-// harness needs no knowledge of the legacy schema. No-op if already populated.
+// one-time import of a provider's legacy store; mapAccount is provider-supplied so the harness needs no legacy-schema knowledge. No-op if already populated.
 export function migrateLegacy(provider, legacyPath, mapAccount, opts) {
   try {
     if (!existsSync(legacyPath)) return false;
