@@ -25,6 +25,9 @@ export interface ProviderDef {
   loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: () => Promise<CoreAccount | null> }>;
   // the provider's account controller — the shared core TUI renders what it returns
   accounts?: AccountController;
+  // optional load-time prep (e.g. migrate a legacy account file); core calls this
+  // when the opencode plugin loads, before deciding whether to auto-route.
+  onLoad?: (ctx: ProviderCtx) => void | Promise<void>;
 }
 
 // One account in the generic pool. OAuth creds + generic rate-limit "lanes" +

@@ -8,6 +8,7 @@ import { join, dirname, resolve } from "path";
 import { homedir } from "os";
 import { getConfigDir } from "./env.js";
 import { log } from "./log.js";
+import { listAccounts } from "./accounts.js";
 
 function opencodeConfigPath(): string {
   const override = (process.env.OPENCODE_CONFIG || "").trim();
@@ -74,8 +75,20 @@ function authMethods(def) {
 
 export function createOpencodePlugin(def) {
   const opencodeProvider = def.opencodeProvider || "anthropic";
-  return async function () {
+  return async function (input) {
     try { mergeModels(opencodeProvider, def.models || {}, def.opencodeNpm); } catch {}
+    // let the driver do load-time prep (e.g. migrate a legacy account file) so the
+    // account check below reflects the real pool
+    try { if (typeof def.onLoad === "function") await def.onLoad({ configDir: getConfigDir(), log }); } catch (e) { log("onLoad failed: " + e); }
+    // auto-route: when accounts already exist, seed opencode's auth entry so it
+    // routes through our loader WITHOUT the user running `oc auth login`. OAuth is
+    // then only needed to ADD a new account.
+    try {
+      const client = input && input.client;
+      if (client && client.auth && listAccounts(def.id).length > 0) {
+        await client.auth.set({ path: { id: opencodeProvider }, body: { type: "oauth", refresh: "", access: "", expires: 0 } });
+      }
+    } catch (e) { log("auto-route seed failed: " + e); }
     return {
       auth: {
         provider: opencodeProvider,
