@@ -142,21 +142,3 @@ export function removeAccount(provider, id, opts) {
 }
 
 export function clearAccounts(provider, opts) { saveAccounts(provider, emptyPool(), opts); }
-
-// one-time import of a provider's legacy store; mapAccount is provider-supplied so the harness needs no legacy-schema knowledge. No-op if already populated.
-export function migrateLegacy(provider, legacyPath, mapAccount, opts) {
-  try {
-    if (!existsSync(legacyPath)) return false;
-    if (loadAccounts(provider, opts).accounts.length > 0) return false;
-    const legacy = JSON.parse(readFileSync(legacyPath, "utf8"));
-    if (!legacy || !Array.isArray(legacy.accounts)) return false;
-    const accounts = legacy.accounts.map(mapAccount).filter(Boolean);
-    if (accounts.length === 0) return false;
-    saveAccounts(provider, {
-      accounts,
-      activeIndex: legacy.activeIndex || 0,
-      activeIndexByLane: legacy.activeIndexByFamily || legacy.activeIndexByLane || {},
-    }, opts);
-    return true;
-  } catch { return false; }
-}

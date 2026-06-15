@@ -84,8 +84,6 @@ export function createOpencodePlugin(def) {
   const opencodeProvider = def.opencodeProvider || "anthropic";
   return async function (input) {
     try { mergeModels(opencodeProvider, def.models || {}, def.opencodeNpm); } catch {}
-    // driver load-time prep (e.g. legacy migration) must run before the account check below reflects the real pool
-    try { if (typeof def.onLoad === "function") await def.onLoad({ configDir: getConfigDir(), log }); } catch (e) { log("onLoad failed: " + e); }
     // when accounts already exist, seed opencode's auth entry so it routes through our loader without the user running `oc auth login`
     try {
       const client = input && input.client;

@@ -21,8 +21,6 @@ export interface ProviderDef {
   // when present, core exposes an opencode oauth method; complete() persists the CoreAccount
   loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: () => Promise<CoreAccount | null> }>;
   accounts?: AccountController;
-  // load-time prep (e.g. legacy migration); runs before auto-route is decided
-  onLoad?: (ctx: ProviderCtx) => void | Promise<void>;
 }
 
 export interface CoreAccount {
