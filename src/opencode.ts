@@ -55,11 +55,7 @@ function authMethods(def) {
       // TTY with a controller: run the interactive account-management menu (add does OAuth);
       // afterwards return a success so opencode routes through our loader (real accounts live in the core store).
       if (def.accounts && isTTY()) {
-        const actions = [];
-        if (def.models && Object.keys(def.models).length) {
-          actions.push({ label: "Add " + def.label + " models to opencode config", run: () => { try { mergeModels(opencodeProvider, def.models, def.opencodeNpm); } catch {} } });
-        }
-        if (typeof def.accounts.actions === "function") actions.push(...def.accounts.actions());
+        const actions = typeof def.accounts.actions === "function" ? def.accounts.actions() : [];
         try { await runAccountMenu(def.accounts, { label: def.label, actions }); } catch (e) { log("account menu failed: " + e); }
         return { url: "", instructions: def.label + " accounts updated.", method: "auto", callback: async () => ({ type: "success", refresh: "core-auth", access: "", expires: 0 }) };
       }
