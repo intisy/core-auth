@@ -21,6 +21,7 @@ export interface ProviderDef {
   // when present, core exposes an opencode oauth method; complete() persists the CoreAccount
   loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: () => Promise<CoreAccount | null> }>;
   accounts?: AccountController;
+  proxies?: boolean;   // opt into the shared proxy subsystem (Manage-proxies menu + per-account selection)
 }
 
 export interface CoreAccount {

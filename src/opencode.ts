@@ -56,7 +56,7 @@ function authMethods(def) {
       // afterwards return a success so opencode routes through our loader (real accounts live in the core store).
       if (def.accounts && isTTY()) {
         const actions = typeof def.accounts.actions === "function" ? def.accounts.actions() : [];
-        try { await runAccountMenu(def.accounts, { label: def.label, actions }); } catch (e) { log("account menu failed: " + e); }
+        try { await runAccountMenu(def.accounts, { label: def.label, actions, proxies: !!def.proxies }); } catch (e) { log("account menu failed: " + e); }
         return { url: "", instructions: def.label + " accounts updated.", method: "auto", callback: async () => ({ type: "success", refresh: "core-auth", access: "", expires: 0 }) };
       }
       const flow = await def.loginFlow({ configDir: getConfigDir(), log });

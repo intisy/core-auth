@@ -5,6 +5,8 @@
 import { select } from "./select.js";
 import { confirm } from "./confirm.js";
 import { isTTY, ANSI } from "./ansi.js";
+import { proxyManager } from "../proxy/manager.js";
+import { runProxyMenu, selectAccountProxies } from "./proxy-menu.js";
 
 const STATUS_BADGE = {
   active: `${ANSI.green}[active]${ANSI.reset}`,
@@ -21,13 +23,14 @@ function quotaHint(view) {
     .join("  ");
 }
 
-async function accountDetails(controller, view) {
+async function accountDetails(controller, view, proxies) {
   const label = view.email || view.id;
   const extra = typeof controller.accountActions === "function" ? controller.accountActions(view) : [];
   const items = [
     { label: "Back", value: { type: "back" } },
     { label: view.enabled === false ? "Enable" : "Disable", value: { type: "toggle" }, color: view.enabled === false ? "green" : "yellow" },
   ];
+  if (proxies && proxyManager.getMode() === "manual") items.push({ label: "Select proxies", value: { type: "proxies" }, color: "cyan" });
   extra.forEach((action, i) => items.push({ label: action.label, value: { type: "action", index: i }, color: action.color || "cyan" }));
   items.push({ label: "Remove", value: { type: "remove" }, color: "red" });
 
@@ -35,12 +38,14 @@ async function accountDetails(controller, view) {
   if (!result || result.type === "back") return;
   if (result.type === "toggle") controller.enable(view.id, view.enabled === false);
   else if (result.type === "remove") { if (await confirm(`Remove ${label}?`)) controller.remove(view.id); }
+  else if (result.type === "proxies") await selectAccountProxies(view.id);
   else if (result.type === "action") { try { await extra[result.index].run(); } catch (error) { process.stderr.write(String(error) + "\n"); } }
 }
 
 export async function runAccountMenu(controller, opts) {
   const label = (opts && opts.label) || "Accounts";
   const extraActions = (opts && opts.actions) || [];
+  const proxies = !!(opts && opts.proxies);
   if (!isTTY()) { try { await controller.login(); } catch {} return; }
 
   while (true) {
@@ -50,6 +55,7 @@ export async function runAccountMenu(controller, opts) {
       { label: "Add account", value: { type: "add" }, color: "cyan" },
     ];
     if (typeof controller.refreshQuota === "function") items.push({ label: "Refresh quotas", value: { type: "quota" }, color: "cyan" });
+    if (proxies) items.push({ label: "Manage proxies", value: { type: "proxies" }, color: "cyan" });
     extraActions.forEach((action, i) => items.push({ label: action.label, value: { type: "action", index: i }, color: action.color || "cyan" }));
     items.push({ label: "", value: { type: "noop" }, separator: true });
     items.push({ label: `Accounts (${views.length})`, value: { type: "noop" }, kind: "heading" });
@@ -69,8 +75,9 @@ export async function runAccountMenu(controller, opts) {
     if (!action || action.type === "done" || action.type === "noop") return;
     if (action.type === "add") { try { await controller.login(); } catch (error) { process.stderr.write(String(error) + "\n"); } }
     else if (action.type === "quota") { try { await controller.refreshQuota(); } catch {} }
+    else if (action.type === "proxies") await runProxyMenu();
     else if (action.type === "action") { try { await extraActions[action.index].run(); } catch (error) { process.stderr.write(String(error) + "\n"); } }
     else if (action.type === "delete-all") { if (await confirm("Delete ALL accounts? This cannot be undone.")) for (const view of controller.list()) controller.remove(view.id); }
-    else if (action.type === "account") await accountDetails(controller, action.view);
+    else if (action.type === "account") await accountDetails(controller, action.view, proxies);
   }
 }
