@@ -61,11 +61,13 @@ export async function refreshAccessToken(refreshToken, opts) {
   if (opts.clientSecret) params.client_secret = opts.clientSecret;
   Object.assign(params, opts.extraParams || {});
 
-  const response = await fetch(opts.tokenUrl, {
+  const init = {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params),
-  });
+  };
+  if (opts.proxy) init.proxy = opts.proxy;   // Bun fetch honors .proxy; keeps refresh on the account's IP
+  const response = await fetch(opts.tokenUrl, init);
 
   if (!response.ok) {
     let errorText;

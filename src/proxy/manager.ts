@@ -93,6 +93,31 @@ export class ProxyManager {
     return chosen;
   }
 
+  // pick a proxy for login traffic before an account exists (no id to bind yet);
+  // returns the best globally-available proxy, or null when none/disabled
+  pickForLogin() {
+    const store = this.load();
+    if (store.mode === "disabled") return null;
+    const candidates = store.proxies
+      .filter((p) => !p.owner && countAssignments(store, p.url) < MAX_ACCOUNTS_PER_PROXY)
+      .sort((a, b) => scoreOf(store, a) - scoreOf(store, b));
+    return candidates.length ? candidates[0].url : null;
+  }
+
+  // stick the login proxy to the account so refresh + requests reuse it; in manual
+  // mode also record it in the account's selection so selectForAccount keeps it
+  bindAccountProxy(accountId, url) {
+    if (!url) return;
+    updateProxyStore((s) => {
+      if (s.mode === "manual") {
+        const selection = s.manualSelection[accountId] || [];
+        if (!selection.includes(url)) selection.push(url);
+        s.manualSelection[accountId] = selection;
+      }
+      s.assignments[accountId] = url;
+    });
+  }
+
   reportRateLimit(url) {
     updateProxyStore((s) => {
       const p = s.proxies.find((x) => x.url === url);

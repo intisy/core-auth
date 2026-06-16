@@ -5,6 +5,14 @@ import { loadAccounts, saveAccounts, updateAccounts, removeAccount } from "./acc
 import { selectIndex } from "./selection.js";
 import { isAvailable as builtinAvailable, availableAt, calculateBackoffMs } from "./ratelimit.js";
 import { accessTokenExpired, refreshAccessToken, TokenRefreshError } from "./oauth.js";
+import { proxyManager } from "./proxy/manager.js";
+
+// token refresh rides the account's sticky proxy so Google sees the same IP for
+// refresh as for requests; null when proxying is off -> direct refresh as before
+function oauthWithProxy(oauth, id) {
+  const proxy = proxyManager.selectForAccount(id);
+  return proxy ? { ...oauth, proxy } : oauth;
+}
 
 export class AccountManager {
   constructor(providerId, opts) {
@@ -48,7 +56,7 @@ export class AccountManager {
     if (!accessTokenExpired(account)) return account.access;
     if (!this.oauth || !account.refresh) return account.access;
     try {
-      const refreshed = await refreshAccessToken(account.refresh, this.oauth);
+      const refreshed = await refreshAccessToken(account.refresh, oauthWithProxy(this.oauth, id));
       this.mutate(id, (a) => {
         a.access = refreshed.access;
         a.expires = refreshed.expires;
@@ -108,7 +116,7 @@ export class AccountManager {
   async refresh(id) {
     const account = this.load().accounts.find((candidate) => candidate.id === id);
     if (!account || !this.oauth || !account.refresh) return false;
-    const refreshed = await refreshAccessToken(account.refresh, this.oauth);
+    const refreshed = await refreshAccessToken(account.refresh, oauthWithProxy(this.oauth, id));
     this.mutate(id, (a) => {
       a.access = refreshed.access;
       a.expires = refreshed.expires;
