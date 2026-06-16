@@ -30,7 +30,7 @@ async function accountDetails(controller, view, proxies) {
     { label: "Back", value: { type: "back" } },
     { label: view.enabled === false ? "Enable" : "Disable", value: { type: "toggle" }, color: view.enabled === false ? "green" : "yellow" },
   ];
-  if (proxies && proxyManager.getMode() === "manual") items.push({ label: "Select proxies", value: { type: "proxies" }, color: "cyan" });
+  if (proxies) items.push({ label: "Select proxies", value: { type: "proxies" }, color: "cyan" });
   extra.forEach((action, i) => items.push({ label: action.label, value: { type: "action", index: i }, color: action.color || "cyan" }));
   items.push({ label: "Remove", value: { type: "remove" }, color: "red" });
 
