@@ -18,4 +18,5 @@ export { prompt } from "./ui/prompt.js";
 export { isTTY } from "./ui/ansi.js";
 export { proxyManager, ProxyManager } from "./proxy/manager.js";
 export { runProxyMenu, selectAccountProxies } from "./ui/proxy-menu.js";
+export { runProviderMenu } from "./menu.js";
 export * from "./types.js";
