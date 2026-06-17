@@ -1,9 +1,13 @@
 // @ts-nocheck
-// Optional cross-app account sync via sync-bridge — the only place core-auth reaches beyond the active app's home, and the only component allowed to span both. Best-effort: any failure or HUB_SYNC_DISABLED leaves the local store untouched.
+// Optional cross-app account sync via the sync-bridge package — the only component
+// allowed to span both app homes. sync-bridge is an optional dependency: if it is
+// not installed the require fails and sync becomes a no-op, as does HUB_SYNC_DISABLED.
+import { createRequire } from "module";
 
-import * as bridge from "../sync-bridge/dist/index.js";
+let bridge = null;
+try { bridge = createRequire(import.meta.url)("sync-bridge"); } catch {}
 
 export function syncAccounts() {
-  if (process.env.HUB_SYNC_DISABLED) return;
+  if (!bridge || process.env.HUB_SYNC_DISABLED) return;
   try { bridge.syncAccounts(); } catch {}
 }
