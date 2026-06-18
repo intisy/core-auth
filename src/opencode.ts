@@ -34,7 +34,17 @@ function mergeModels(opencodeProvider: string, models: Record<string, unknown>, 
   config.provider = config.provider || {};
   config.provider[opencodeProvider] = config.provider[opencodeProvider] || {};
   // a custom (non-built-in) provider needs an SDK to parse the response
-  if (npm) config.provider[opencodeProvider].npm = npm;
+  if (npm) {
+    config.provider[opencodeProvider].npm = npm;
+    // @ai-sdk providers (google/anthropic/…) validate a NON-EMPTY apiKey when the
+    // model is constructed — before our loader's fetch override takes over — so
+    // seed a dummy key. Real auth is the per-account OAuth token applied in handle().
+    const existingOptions = config.provider[opencodeProvider].options || {};
+    config.provider[opencodeProvider].options = {
+      ...existingOptions,
+      apiKey: existingOptions.apiKey || opencodeProvider,
+    };
+  }
   // REPLACE (not merge) the provider's models every startup so a renamed/removed
   // model id can never linger as a stale entry — the provider owns this list.
   config.provider[opencodeProvider].models = { ...models };
