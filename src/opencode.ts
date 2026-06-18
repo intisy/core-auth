@@ -43,12 +43,12 @@ function mergeModels(opencodeProvider: string, models: Record<string, unknown>, 
   } catch (e) { log("opencode model merge failed: " + (e && e.message)); }
 }
 
-// With a driver loginFlow, expose opencode's `code` oauth method: opencode shows
-// the URL + instructions, prompts the user for the authorization code (or full
-// redirect URL) and hands it to callback(code). This is terminal-conflict-free —
-// opencode owns the prompt — so it works inside containers where the loopback
-// redirect can't reach the host browser. The driver's complete(input) parses the
-// pasted code/URL; the interactive account menu stays on the CLI / Claude loader.
+// `oc auth login` for a provider with an account controller (in a TTY) opens our
+// interactive account-management TUI (runProviderMenu: list/add/remove/verify),
+// where "Add account" runs the driver's own OAuth login (loopback listener +
+// terminal paste fallback). Otherwise it falls back to opencode's `code` oauth
+// method: opencode prompts for the pasted code / redirect URL and hands it to
+// callback(code) — terminal-conflict-free for non-TTY / container-only flows.
 function authMethods(def) {
   if (typeof def.loginFlow !== "function") {
     return [{ label: def.label + " (via core-auth)", type: "api" }];
@@ -57,6 +57,10 @@ function authMethods(def) {
     type: "oauth",
     label: def.label,
     authorize: async function () {
+      if (def.accounts && isTTY()) {
+        try { await runProviderMenu(def); } catch (e) { log("account menu failed: " + e); }
+        return { url: "", instructions: def.label + " accounts updated.", method: "auto", callback: async () => ({ type: "success", refresh: "core-auth", access: "", expires: 0 }) };
+      }
       const flow = await def.loginFlow({ configDir: getConfigDir(), log });
       return {
         url: flow.url,
