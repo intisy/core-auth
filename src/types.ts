@@ -18,8 +18,10 @@ export interface ProviderDef {
   opencodeNpm?: string;               // SDK package for a custom (non-built-in) opencode provider
   models: Record<string, ProviderModel>;
   handle: (request: Request, ctx: ProviderCtx) => Promise<Response>;
-  // when present, core exposes an opencode oauth method; complete() persists the CoreAccount
-  loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: () => Promise<CoreAccount | null> }>;
+  // when present, core exposes an opencode oauth "code" method; complete(input?)
+  // persists the CoreAccount. input is opencode's pasted code / redirect URL;
+  // when omitted (CLI path) the driver falls back to its own listener / readline.
+  loginFlow?: (ctx: ProviderCtx) => Promise<{ url: string; instructions?: string; complete: (input?: string) => Promise<CoreAccount | null> }>;
   accounts?: AccountController;
   proxies?: boolean;   // opt into the shared proxy subsystem (Manage-proxies menu + per-account selection)
 }

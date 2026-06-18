@@ -43,7 +43,12 @@ function mergeModels(opencodeProvider: string, models: Record<string, unknown>, 
   } catch (e) { log("opencode model merge failed: " + (e && e.message)); }
 }
 
-// With a driver loginFlow, core owns the OAuth TUI; otherwise the no-key api method just makes opencode route through loader.fetch using existing accounts.
+// With a driver loginFlow, expose opencode's `code` oauth method: opencode shows
+// the URL + instructions, prompts the user for the authorization code (or full
+// redirect URL) and hands it to callback(code). This is terminal-conflict-free —
+// opencode owns the prompt — so it works inside containers where the loopback
+// redirect can't reach the host browser. The driver's complete(input) parses the
+// pasted code/URL; the interactive account menu stays on the CLI / Claude loader.
 function authMethods(def) {
   if (typeof def.loginFlow !== "function") {
     return [{ label: def.label + " (via core-auth)", type: "api" }];
@@ -52,20 +57,14 @@ function authMethods(def) {
     type: "oauth",
     label: def.label,
     authorize: async function () {
-      // TTY with a controller: run the interactive account-management menu (add does OAuth);
-      // afterwards return a success so opencode routes through our loader (real accounts live in the core store).
-      if (def.accounts && isTTY()) {
-        try { await runProviderMenu(def); } catch (e) { log("account menu failed: " + e); }
-        return { url: "", instructions: def.label + " accounts updated.", method: "auto", callback: async () => ({ type: "success", refresh: "core-auth", access: "", expires: 0 }) };
-      }
       const flow = await def.loginFlow({ configDir: getConfigDir(), log });
       return {
         url: flow.url,
-        instructions: flow.instructions || ("Sign in to " + def.label + ", then return to your terminal."),
-        method: "auto",
-        callback: async function () {
+        instructions: flow.instructions || ("Sign in to " + def.label + ", then paste the authorization code (or the full redirect URL) here."),
+        method: "code",
+        callback: async function (code) {
           try {
-            const account = await flow.complete();
+            const account = await flow.complete(code);
             if (!account || !account.refresh) return { type: "failed" };
             return { type: "success", refresh: account.refresh, access: account.access || "", expires: account.expires || 0 };
           } catch (error) { log("oauth login failed: " + error); return { type: "failed" }; }
