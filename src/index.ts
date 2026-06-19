@@ -21,4 +21,6 @@ export { isTTY } from "./ui/ansi.js";
 export { proxyManager, ProxyManager } from "./proxy/manager.js";
 export { runProxyMenu, selectAccountProxies } from "./ui/proxy-menu.js";
 export { runProviderMenu } from "./menu.js";
+export { buildAccountMenu, buildAutoMenu } from "./ui/menu-model.js";
+export { runMenu } from "./ui/menu-render.js";
 export * from "./types.js";
