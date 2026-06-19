@@ -16,8 +16,6 @@ import { proxyManager } from "../proxy/manager.js";
 import { selectAccountProxies } from "./proxy-menu.js";
 import { getAutoConfig, setAutoConfig } from "../config.js";
 import { readModelCache } from "../models-cache.js";
-import { getConfigDir } from "../env.js";
-import { log } from "../log.js";
 
 // ---- Proxy menu (native model) ---------------------------------------------
 
@@ -129,19 +127,11 @@ export function buildAccountMenu(def) {
   const extraActions = (typeof controller.actions === "function" ? controller.actions() : []).slice();
   if (readModelCache(def.id)) extraActions.push({ label: "Configure Auto models", color: "cyan", auto: true });
 
-  // Add account: providers with a paste-style loginFlow (begin->url, complete(code))
-  // collect the code via an input action (works in a container + renders natively).
-  // Others fall back to their own login() (suspend).
-  const addAccount = typeof def.loginFlow === "function"
-    ? { label: "Add account", color: "cyan", run: async () => {
-        const flow = await def.loginFlow({ configDir: getConfigDir(), log });
-        return { input: {
-          title: "Paste the code / redirect URL",
-          message: (flow.instructions || "Sign in, then paste the code here:") + (flow.url ? "\n\n" + flow.url : ""),
-          complete: async (text) => { await flow.complete(text); return { refresh: true }; },
-        } };
-      } }
-    : { label: "Add account", color: "cyan", suspend: true, run: async () => { try { await controller.login(); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } };
+  // Add account runs the provider's full login(): it opens the browser and, where
+  // the provider supports it, auto-captures the redirect via a loopback listener —
+  // falling back to a pasted code only when that isn't possible (no browser /
+  // headless container). Paste is always the fallback, never the default path.
+  const addAccount = { label: "Add account", color: "cyan", suspend: true, run: async () => { try { await controller.login(); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } };
 
   const items = [{ label: "Actions", kind: "heading" }, addAccount];
   if (typeof controller.refreshQuota === "function") items.push({ label: "Refresh quotas", color: "cyan", suspend: true, run: async () => { try { await controller.refreshQuota(); } catch {} return { refresh: true }; } });
