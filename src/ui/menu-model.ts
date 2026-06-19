@@ -13,9 +13,39 @@
 
 import { confirm } from "./confirm.js";
 import { proxyManager } from "../proxy/manager.js";
-import { runProxyMenu, selectAccountProxies } from "./proxy-menu.js";
+import { selectAccountProxies } from "./proxy-menu.js";
 import { getAutoConfig, setAutoConfig } from "../config.js";
 import { readModelCache } from "../models-cache.js";
+import { getConfigDir } from "../env.js";
+import { log } from "../log.js";
+
+// ---- Proxy menu (native model) ---------------------------------------------
+
+function buildProxyDetail(url) {
+  return { title: url, items: [
+    { label: "Back", run: () => ({ pop: true }) },
+    { label: "Remove this proxy", color: "red", suspend: true, run: async () => { if (await confirm("Remove " + url + "?")) { proxyManager.remove(url); return { pop: true }; } return { refresh: true }; } },
+  ] };
+}
+
+function buildProxyMenu() {
+  const mode = proxyManager.getMode();
+  const grouped = proxyManager.byProvider() || {};
+  const items = [
+    { label: "Back", run: () => ({ pop: true }) },
+    { label: "Mode: " + mode, color: "cyan", run: () => { const order = ["automatic", "manual", "disabled"]; const i = order.indexOf(mode); proxyManager.setMode(order[(i + 1) % order.length]); return { refresh: true }; } },
+    { label: "Add proxy", color: "green", run: () => ({ input: { title: "Proxy URL", message: "Enter a proxy (host:port or http://...)", complete: (url) => { proxyManager.addManual(url); return { refresh: true }; } } }) },
+    { label: "Refresh from providers", color: "cyan", suspend: true, run: async () => { try { await proxyManager.refresh(); } catch {} return { refresh: true }; } },
+  ];
+  for (const provider of Object.keys(grouped)) {
+    const list = grouped[provider] || [];
+    if (!list.length) continue;
+    items.push({ label: "", separator: true });
+    items.push({ label: provider + " (" + list.length + ")", kind: "heading" });
+    for (const p of list) items.push({ label: p.url, hint: "score " + (typeof p.score === "number" ? p.score.toFixed(2) : "?") + " · in-use " + (p.inUse || 0), run: ((u) => () => ({ push: () => buildProxyDetail(u) }))(p.url) });
+  }
+  return { title: "Proxies", subtitle: "mode: " + mode + " · Esc to go back", items };
+}
 
 const STATUS = {
   active: "[active]", "rate-limited": "[rate-limited]", "cooling-down": "[cooling]",
@@ -99,12 +129,23 @@ export function buildAccountMenu(def) {
   const extraActions = (typeof controller.actions === "function" ? controller.actions() : []).slice();
   if (readModelCache(def.id)) extraActions.push({ label: "Configure Auto models", color: "cyan", auto: true });
 
-  const items = [
-    { label: "Actions", kind: "heading" },
-    { label: "Add account", color: "cyan", suspend: true, run: async () => { try { await controller.login(); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } },
-  ];
+  // Add account: providers with a paste-style loginFlow (begin->url, complete(code))
+  // collect the code via an input action (works in a container + renders natively).
+  // Others fall back to their own login() (suspend).
+  const addAccount = typeof def.loginFlow === "function"
+    ? { label: "Add account", color: "cyan", run: async () => {
+        const flow = await def.loginFlow({ configDir: getConfigDir(), log });
+        return { input: {
+          title: "Paste the code / redirect URL",
+          message: (flow.instructions || "Sign in, then paste the code here:") + (flow.url ? "\n\n" + flow.url : ""),
+          complete: async (text) => { await flow.complete(text); return { refresh: true }; },
+        } };
+      } }
+    : { label: "Add account", color: "cyan", suspend: true, run: async () => { try { await controller.login(); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } };
+
+  const items = [{ label: "Actions", kind: "heading" }, addAccount];
   if (typeof controller.refreshQuota === "function") items.push({ label: "Refresh quotas", color: "cyan", suspend: true, run: async () => { try { await controller.refreshQuota(); } catch {} return { refresh: true }; } });
-  if (proxies) items.push({ label: "Manage proxies", color: "cyan", suspend: true, run: async () => { await runProxyMenu(); return { refresh: true }; } });
+  if (proxies) items.push({ label: "Manage proxies", color: "cyan", run: () => ({ push: () => buildProxyMenu() }) });
   extraActions.forEach((a) => {
     if (a.auto) items.push({ label: a.label, color: a.color || "cyan", run: () => ({ push: () => buildAutoMenu(def) }) });
     else items.push({ label: a.label, color: a.color || "cyan", suspend: true, run: async () => { try { await a.run(); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } });
