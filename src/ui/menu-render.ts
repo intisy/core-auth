@@ -5,6 +5,7 @@
 // the same model. An item's run() may also return { input: {...} } to collect a
 // line of text (paste a login code, a proxy URL) — handled here via prompt().
 
+import { createInterface } from "node:readline/promises";
 import { select } from "./select.js";
 import { prompt } from "./prompt.js";
 import { isTTY } from "./ansi.js";
@@ -32,10 +33,23 @@ export async function runMenu(rootBuilder) {
     if (action && action.input) {
       const inp = action.input;
       if (inp.message) process.stdout.write("\n" + inp.message + "\n");
-      const text = await prompt((inp.title || "Input") + ": ");
-      if (text != null && String(text).trim() !== "") {
-        try { apply(await inp.complete(String(text).trim())); } catch (e) { process.stderr.write(String(e) + "\n"); }
+      let result;
+      if (inp.background) {
+        // race a manual paste against the loopback auto-capture; close the readline
+        // as soon as either settles so a loopback win doesn't leave it dangling
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        const pasteP = rl.question((inp.title || "Input") + ": ").then((t) => ({ paste: (t || "").trim() })).catch(() => ({ paste: null }));
+        const bgP = inp.background.then((account) => ({ bg: account }));
+        result = await Promise.race([pasteP, bgP]);
+        try { rl.close(); } catch {}
+      } else {
+        result = { paste: await prompt((inp.title || "Input") + ":") };
       }
+      if (inp.onClose) { try { inp.onClose(); } catch {} }
+      try {
+        if (result.bg) apply(result.bg);
+        else if (result.paste != null && String(result.paste).trim() !== "") apply(await inp.complete(String(result.paste).trim()));
+      } catch (e) { process.stderr.write(String(e) + "\n"); }
       continue;
     }
     apply(action);
