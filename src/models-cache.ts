@@ -45,22 +45,39 @@ export function writeModelCache(providerId, entry) {
 // callers can stamp fetchedAt without this module touching Date.now directly.
 export async function resolveProviderModels(def, ctx, nowMs) {
   const providerId = def.id;
+  let catalog = null;   // { models, ranking, defaultModelId }
+
+  // 1. live fetch — providers that implement fetchModels and have an account
   if (typeof def.fetchModels === "function" && ctx && ctx.hasAccounts) {
     try {
       const result = await def.fetchModels(ctx);
       if (result && result.models && Object.keys(result.models).length > 0) {
-        writeModelCache(providerId, {
-          models: result.models,
-          ranking: result.ranking || [],
-          defaultModelId: result.defaultModelId,
-          fetchedAt: nowMs || 0,
-        });
-        return result.models;
+        catalog = { models: result.models, ranking: result.ranking || Object.keys(result.models), defaultModelId: result.defaultModelId };
       }
     } catch (e) {
       log("fetchModels failed for " + providerId + ": " + e);
     }
   }
-  const cached = readModelCache(providerId);
-  return cached ? cached.models : {};
+  // 2. static catalog — providers that ship def.models (no fetch). ranking defaults
+  //    to declaration order so they still get the "recommended" sort for free.
+  if (!catalog && def.models && Object.keys(def.models).length > 0) {
+    catalog = { models: def.models, ranking: Object.keys(def.models) };
+  }
+  // 3. last good cache; else empty (a fetch-only provider before first login)
+  if (!catalog) {
+    const cached = readModelCache(providerId);
+    return cached ? cached.models : {};
+  }
+
+  // preserve any previously computed sort metadata; refreshAndMerge updates it.
+  const prev = readModelCache(providerId) || {};
+  writeModelCache(providerId, {
+    models: catalog.models,
+    ranking: catalog.ranking,
+    defaultModelId: catalog.defaultModelId,
+    sorts: prev.sorts || [],
+    sortOrders: prev.sortOrders || {},
+    fetchedAt: nowMs || 0,
+  });
+  return catalog.models;
 }

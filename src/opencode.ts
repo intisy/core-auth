@@ -9,9 +9,8 @@ import { log } from "./log.js";
 import { listAccounts } from "./accounts.js";
 import { isTTY } from "./ui/ansi.js";
 import { runProviderMenu } from "./menu.js";
-import { resolveProviderModels, readModelCache } from "./models-cache.js";
-import { getAutoConfig, setAutoConfig } from "./config.js";
-import { computeLeaderboardOrder } from "./leaderboard.js";
+import { resolveProviderModels, readModelCache, writeModelCache } from "./models-cache.js";
+import { computeSorts } from "./sorts.js";
 
 function opencodeConfigPath(): string {
   const override = (process.env.OPENCODE_CONFIG || "").trim();
@@ -66,11 +65,12 @@ async function refreshAndMerge(def): Promise<void> {
     const hasAccounts = listAccounts(def.id).length > 0;
     const models = await resolveProviderModels(def, { configDir: getConfigDir(), log, hasAccounts }, Date.now());
     mergeModels(opencodeProvider, models, def.opencodeNpm);
-    // when Auto is in leaderboard mode, recompute the quality order here (core-auth
-    // owns the ranking logic) so editors like the loader tab only toggle the source.
-    if (getAutoConfig(def.id).source === "leaderboard") {
-      const ranking = (readModelCache(def.id) || {}).ranking || [];
-      if (ranking.length) setAutoConfig(def.id, { leaderboardOrder: await computeLeaderboardOrder(ranking) });
+    // compute + cache the provider's available Auto sort sources (manual is implicit;
+    // recommended is free with a ranking; leaderboard/custom are provider opt-ins).
+    const cache = readModelCache(def.id);
+    if (cache) {
+      const { sorts, sortOrders } = await computeSorts(def, cache.ranking || []);
+      writeModelCache(def.id, { ...cache, sorts, sortOrders });
     }
   } catch (e) { log("model refresh/merge failed: " + e); }
 }

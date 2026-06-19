@@ -41,39 +41,46 @@ export function setActiveProvider(name: string): void {
 // Always reconciled against the live catalog: new models append, removed ones drop,
 // so the config never goes stale relative to what the account actually offers.
 
-// Ranking source: "manual" = the user's order; "recommended" = the provider/API
-// order (agentModelSorts); "leaderboard" = an external quality ranking (cached).
-export type AutoSource = "manual" | "recommended" | "leaderboard";
+// "manual" is always available (the user's hand-ordered list). Every other source
+// (recommended, leaderboard, custom) is provider-defined and advertised in the
+// model cache as { id, label } with a precomputed order in sortOrders.
+
+// Available sources for a provider: always manual, plus whatever the cache advertises.
+export function getAutoSources(providerId: string): Array<{ id: string; label: string }> {
+  const cache = readModelCache(providerId);
+  const extra = (cache && Array.isArray(cache.sorts) ? cache.sorts : []).filter((s) => s && s.id);
+  return [{ id: "manual", label: "Manual" }, ...extra];
+}
 
 export function getAutoConfig(providerId: string): {
-  order: string[]; excluded: string[]; source: AutoSource; leaderboardOrder: string[];
+  order: string[]; excluded: string[]; source: string; sources: Array<{ id: string; label: string }>;
 } {
   const stored = (readConfig().auto || {})[providerId] || {};
   const cache = readModelCache(providerId);
   const catalogOrder: string[] = (cache && cache.ranking) || [];
+  const sortOrders: Record<string, string[]> = (cache && cache.sortOrders) || {};
   const reconcile = (ids: string[]) => {
     const out = (Array.isArray(ids) ? ids : []).filter((id) => catalogOrder.includes(id));
     for (const id of catalogOrder) if (!out.includes(id)) out.push(id);
     return out;
   };
 
-  const source: AutoSource = stored.source === "recommended" || stored.source === "leaderboard" ? stored.source : "manual";
-  const manualOrder = reconcile(stored.order && stored.order.length ? stored.order : catalogOrder);
-  const leaderboardOrder = reconcile(stored.leaderboardOrder || []);
+  const sources = getAutoSources(providerId);
+  const validIds = sources.map((s) => s.id);
+  const source = stored.source && validIds.includes(stored.source) ? stored.source : "manual";
 
-  // The effective order depends on the chosen source.
-  const order =
-    source === "recommended" ? catalogOrder.slice()
-    : source === "leaderboard" ? leaderboardOrder
-    : manualOrder;
+  // manual = the stored hand-ordered list; any other source = its precomputed order
+  const order = source === "manual"
+    ? reconcile(stored.order && stored.order.length ? stored.order : catalogOrder)
+    : reconcile(sortOrders[source] || catalogOrder);
 
   const excluded = (Array.isArray(stored.excluded) ? stored.excluded : []).filter((id) => catalogOrder.includes(id));
-  return { order, excluded, source, leaderboardOrder };
+  return { order, excluded, source, sources };
 }
 
 export function setAutoConfig(
   providerId: string,
-  auto: { order?: string[]; excluded?: string[]; source?: AutoSource; leaderboardOrder?: string[] },
+  auto: { order?: string[]; excluded?: string[]; source?: string },
 ): void {
   const cfg = readConfig();
   cfg.auto = cfg.auto || {};
@@ -82,7 +89,6 @@ export function setAutoConfig(
     order: auto.order !== undefined ? auto.order : prev.order || [],
     excluded: auto.excluded !== undefined ? auto.excluded : prev.excluded || [],
     source: auto.source !== undefined ? auto.source : prev.source || "manual",
-    leaderboardOrder: auto.leaderboardOrder !== undefined ? auto.leaderboardOrder : prev.leaderboardOrder || [],
   };
   writeConfig(cfg);
 }
