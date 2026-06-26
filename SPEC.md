@@ -85,5 +85,5 @@ providers reshape it.
 
 ## Open infra question
 
-`core-auth` needs a remote (`intisy/core-auth`, private, like `core-loader`) before it can be
+`core-auth` needs a remote (`intisy-ai/core-auth`, private, like `core-loader`) before it can be
 wired as a submodule. Create via `gh repo create` or manually?
