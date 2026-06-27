@@ -1,6 +1,7 @@
 // @ts-nocheck
 // core-auth config: the active provider and harness settings, stored in
-// config/core-auth.json (preferred) with a top-level fallback.
+// config/auth.json (preferred) with a top-level fallback. (Renamed from the old
+// core-auth.json — read as a legacy fallback so existing configs keep working.)
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -9,12 +10,16 @@ import { readModelCache } from "./models-cache.js";
 
 function paths() {
   const dir = getConfigDir();
-  return { preferred: join(dir, "config", "core-auth.json"), fallback: join(dir, "core-auth.json") };
+  return {
+    preferred: join(dir, "config", "auth.json"),
+    fallback: join(dir, "auth.json"),
+    legacy: [join(dir, "config", "core-auth.json"), join(dir, "core-auth.json")],
+  };
 }
 
 export function readConfig(): Record<string, any> {
-  const { preferred, fallback } = paths();
-  const p = existsSync(preferred) ? preferred : existsSync(fallback) ? fallback : null;
+  const { preferred, fallback, legacy } = paths();
+  const p = [preferred, fallback, ...legacy].find((c) => existsSync(c)) || null;
   try { return p ? JSON.parse(readFileSync(p, "utf8")) : {}; } catch { return {}; }
 }
 

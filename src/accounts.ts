@@ -6,7 +6,8 @@ import { join } from "path";
 import { randomBytes } from "crypto";
 import { configFolder } from "./env.js";
 
-const DEFAULT_FILE = "core-auth-accounts.json";
+const DEFAULT_FILE = "accounts.json";
+const LEGACY_FILE = "core-auth-accounts.json"; // pre-rename; read-only fallback so existing logins migrate
 const LOCK_STALE_MS = 15 * 1000;
 const LOCK_WAIT_MS = 5 * 1000;
 const LOCK_POLL_MS = 25;
@@ -53,7 +54,16 @@ function withLock(opts, fn) {
 }
 
 function readStore(opts) {
-  try { const file = storeFile(opts); if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) || {}; } catch {}
+  try {
+    let file = storeFile(opts);
+    // migrate: if the renamed store isn't there yet, read the legacy file (the next
+    // write goes to the new name). Only for the default store, not a custom opts.file.
+    if (!existsSync(file) && !(opts && opts.file)) {
+      const legacy = join((opts && opts.dir) || configFolder(), LEGACY_FILE);
+      if (existsSync(legacy)) file = legacy;
+    }
+    if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) || {};
+  } catch {}
   return { version: 1, providers: {} };
 }
 
