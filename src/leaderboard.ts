@@ -40,7 +40,11 @@ export function hasLeaderboardKey(): boolean {
 function normalize(name: string): string {
   return String(name || "")
     .toLowerCase()
-    .replace(/-(minimal|low|medium|high|thinking|agent|extra-low|preview|customtools)\b/g, "")
+    // strip effort/variant tokens regardless of separator so "Gemini Flash (High)",
+    // "gemini-flash-high" and "gemini flash low" all collapse to the SAME base key —
+    // variants of one model then share a score and group together (the old regex only
+    // stripped hyphenated "-high", so parenthesized "(High)" variants scattered).
+    .replace(/\b(minimal|extra[\s_-]?low|low|medium|high|thinking|agent|preview|customtools|reasoning)\b/g, "")
     .replace(/[^a-z0-9]/g, "");
 }
 
@@ -165,14 +169,17 @@ export async function computeLeaderboardOrder(candidateIds: string[]): Promise<s
     return 3;   // normal / no effort suffix
   };
 
-  const scored = candidateIds.map((id, i) => ({ id, i, score: scoreFor(id), effort: effortRank(id) }));
-  const byEffortThenCatalog = (a, b) => (b.effort - a.effort) || (a.i - b.i);
+  const scored = candidateIds.map((id, i) => ({ id, i, score: scoreFor(id), effort: effortRank(id), base: normalize(id) }));
+  // Effort ONLY decides order between variants of the SAME base model (e.g. Flash High
+  // vs Flash Low) — never between different models. Different models that happen to tie
+  // on score keep catalog order; effort does not cross-influence them.
+  const tie = (a, b) => (a.base === b.base ? (b.effort - a.effort) : 0) || (a.i - b.i);
   return scored
     .sort((a, b) => {
-      if (a.score >= 0 && b.score >= 0) return (b.score - a.score) || byEffortThenCatalog(a, b);
+      if (a.score >= 0 && b.score >= 0) return (b.score - a.score) || tie(a, b);
       if (a.score >= 0) return -1;       // scored before unscored
       if (b.score >= 0) return 1;
-      return byEffortThenCatalog(a, b);  // both unscored: effort, then catalog order
+      return tie(a, b);                  // both unscored: same-base effort, else catalog
     })
     .map((s) => s.id);
 }
