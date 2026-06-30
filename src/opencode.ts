@@ -24,7 +24,7 @@ function authMethods(def) {
     authorize: async function () {
       if (def.accounts && isTTY()) {
         try { await runProviderMenu(def); } catch (e) { log("account menu failed: " + e); }
-        await refreshModels(def);   // pull the now-authed account's live model catalog
+        await refreshModels(def, true);   // pull the now-authed account's live model catalog
         return { url: "", instructions: def.label + " accounts updated.", method: "auto", callback: async () => ({ type: "success", refresh: "core-auth", access: "", expires: 0 }) };
       }
       const flow = await def.loginFlow({ configDir: getConfigDir(), log });
@@ -36,7 +36,7 @@ function authMethods(def) {
           try {
             const account = await flow.complete(code);
             if (!account || !account.refresh) return { type: "failed" };
-            await refreshModels(def);   // pull the now-authed account's live model catalog
+            await refreshModels(def, true);   // pull the now-authed account's live model catalog
             return { type: "success", refresh: account.refresh, access: account.access || "", expires: account.expires || 0 };
           } catch (error) { log("oauth login failed: " + error); return { type: "failed" }; }
         },
@@ -48,7 +48,7 @@ function authMethods(def) {
 export function createOpencodePlugin(def) {
   const opencodeProvider = def.opencodeProvider || "anthropic";
   return async function (input) {
-    await refreshModels(def);
+    await refreshModels(def, true);
     // when accounts already exist, seed opencode's auth entry so it routes through our loader without the user running `oc auth login`
     try {
       const client = input && input.client;

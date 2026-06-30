@@ -68,10 +68,15 @@ export function mergeModels(opencodeProvider: string, models: Record<string, unk
 }
 
 // Resolve the provider's catalog and persist it: always refresh the model cache (which
-// enables the "Configure Auto models" menu and feeds claude-code-loader) and, under
-// opencode, merge the models into opencode.json. Run at plugin startup and right after
-// a login so a newly-authed account populates models without waiting for a restart.
-export async function refreshModels(def): Promise<Record<string, unknown>> {
+// enables the "Configure Auto models" menu and feeds claude-code-loader) and merge the
+// models into opencode.json when running under opencode. Run at plugin startup and right
+// after a login so a newly-authed account populates models without waiting for a restart.
+//
+// `forceOpencodeMerge` is set by the opencode integration (opencode.ts), which only ever
+// runs inside the opencode process — there HUB_CONFIG_DIR may be unset and isOpencodeHost()
+// would be unreliable, so the merge must be unconditional. The host-agnostic menu/login
+// paths leave it false and rely on isOpencodeHost() (the loaders export HUB_CONFIG_DIR).
+export async function refreshModels(def, forceOpencodeMerge = false): Promise<Record<string, unknown>> {
   let models: Record<string, unknown> = {};
   try {
     const hasAccounts = listAccounts(def.id).length > 0;
@@ -82,7 +87,7 @@ export async function refreshModels(def): Promise<Record<string, unknown>> {
       const { sorts, sortOrders } = await computeSorts(def, cache.ranking || []);
       writeModelCache(def.id, { ...cache, sorts, sortOrders });
     }
-    if (isOpencodeHost()) mergeModels(def.opencodeProvider || "anthropic", models, def.opencodeNpm);
+    if (forceOpencodeMerge || isOpencodeHost()) mergeModels(def.opencodeProvider || "anthropic", models, def.opencodeNpm);
   } catch (e) { log("model refresh/merge failed: " + e); }
   return models;
 }
