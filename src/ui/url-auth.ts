@@ -16,6 +16,7 @@
 import { openBrowser } from "../browser.js";
 import { getConfigDir } from "../env.js";
 import { log } from "../log.js";
+import { refreshModels } from "../refresh.js";
 
 export async function buildLoginInput(def) {
   const flow = await def.loginFlow({ configDir: getConfigDir(), log });
@@ -27,10 +28,11 @@ export async function buildLoginInput(def) {
       // shown while complete() runs — the token exchange + project discovery can
       // take ~10-15s (proxied), so the field reports progress instead of vanishing
       pendingLabel: "Adding account… (exchanging the code, this can take a few seconds)",
-      // paste fallback: trade the pasted code/redirect URL for an account
-      complete: async (text) => { await flow.complete(text); return { refresh: true }; },
+      // paste fallback: trade the pasted code/redirect URL for an account, then pull
+      // the now-authed account's models so they appear without an app restart
+      complete: async (text) => { const account = await flow.complete(text); if (account && account.refresh) await refreshModels(def).catch(() => {}); return { refresh: true }; },
       // primary path: the loopback listener auto-completes the input when it fires
-      background: flow.loopback ? flow.loopback.then((account) => (account ? { refresh: true } : null)).catch(() => null) : null,
+      background: flow.loopback ? flow.loopback.then(async (account) => { if (!account) return null; await refreshModels(def).catch(() => {}); return { refresh: true }; }).catch(() => null) : null,
       // release the listener when the input is dismissed / superseded
       onClose: typeof flow.cancel === "function" ? flow.cancel : undefined,
     },

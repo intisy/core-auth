@@ -18,6 +18,7 @@ import { getAutoConfig, setAutoConfig } from "../config.js";
 import { readModelCache } from "../models-cache.js";
 import { buildLoginInput } from "./url-auth.js";
 import { buildSettingsMenu } from "./settings-menu.js";
+import { refreshModels } from "../refresh.js";
 
 // ---- Proxy menu (native model) ---------------------------------------------
 
@@ -136,9 +137,13 @@ export function buildAccountMenu(def) {
   // Providers without a loginFlow fall back to their own login() (suspend).
   const addAccount = typeof def.loginFlow === "function"
     ? { label: "Add account", color: "cyan", run: () => buildLoginInput(def) }
-    : { label: "Add account", color: "cyan", suspend: true, run: async () => { try { await controller.login(); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } };
+    : { label: "Add account", color: "cyan", suspend: true, run: async () => { try { await controller.login(); await refreshModels(def); } catch (e) { process.stderr.write(String(e) + "\n"); } return { refresh: true }; } };
 
   const items = [{ label: "Actions", kind: "heading" }, addAccount];
+  // Pull the provider's model catalog on demand (live fetch when authed, else static/
+  // cached) and write it into the host config — so models + "Configure Auto models"
+  // appear without waiting for an app restart.
+  items.push({ label: "Refresh models", color: "cyan", suspend: true, run: async () => { try { await refreshModels(def); } catch {} return { refresh: true }; } });
   if (typeof controller.refreshQuota === "function") items.push({ label: "Refresh quotas", color: "cyan", suspend: true, run: async () => { try { await controller.refreshQuota(); } catch {} return { refresh: true }; } });
   if (proxies) items.push({ label: "Manage proxies", color: "cyan", run: () => ({ push: () => buildProxyMenu() }) });
   if (def.settings && (def.settings.groups || []).length) items.push({ label: "Settings", color: "cyan", run: () => ({ push: () => buildSettingsMenu(def) }) });

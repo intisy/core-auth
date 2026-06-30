@@ -69,7 +69,7 @@ export async function resolveProviderModels(def, ctx, nowMs) {
     return cached ? cached.models : {};
   }
 
-  // preserve any previously computed sort metadata; refreshAndMerge updates it.
+  // preserve any previously computed sort metadata; refreshModels updates it.
   const prev = readModelCache(providerId) || {};
   writeModelCache(providerId, {
     models: catalog.models,

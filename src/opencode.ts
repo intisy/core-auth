@@ -1,79 +1,12 @@
 // @ts-nocheck
 // OpenCode integration: merge the provider's models into opencode config and return the auth hook whose loader.fetch calls handle().
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join, dirname, resolve } from "path";
-import { homedir } from "os";
 import { getConfigDir } from "./env.js";
 import { log } from "./log.js";
 import { listAccounts } from "./accounts.js";
 import { isTTY } from "./ui/ansi.js";
 import { runProviderMenu } from "./menu.js";
-import { resolveProviderModels, readModelCache, writeModelCache } from "./models-cache.js";
-import { computeSorts } from "./sorts.js";
-
-function opencodeConfigPath(): string {
-  const override = (process.env.OPENCODE_CONFIG || "").trim();
-  if (override) return resolve(override);
-  const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  const dir = join(base, "opencode");
-  const jsonc = join(dir, "opencode.jsonc");
-  const json = join(dir, "opencode.json");
-  return existsSync(jsonc) ? jsonc : json;
-}
-
-function stripJsonc(text: string): string {
-  return text
-    .replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (match, group) => (group ? "" : match))
-    .replace(/,(\s*[}\]])/g, "$1");
-}
-
-function mergeModels(opencodeProvider: string, models: Record<string, unknown>, npm?: string): void {
-  const path = opencodeConfigPath();
-  let config: Record<string, any> = {};
-  try { if (existsSync(path)) config = JSON.parse(stripJsonc(readFileSync(path, "utf8"))); } catch {}
-  if (!config.$schema) config.$schema = "https://opencode.ai/config.json";
-  config.provider = config.provider || {};
-  config.provider[opencodeProvider] = config.provider[opencodeProvider] || {};
-  // a custom (non-built-in) provider needs an SDK to parse the response
-  if (npm) {
-    config.provider[opencodeProvider].npm = npm;
-    // @ai-sdk providers (google/anthropic/…) validate a NON-EMPTY apiKey when the
-    // model is constructed — before our loader's fetch override takes over — so
-    // seed a dummy key. Real auth is the per-account OAuth token applied in handle().
-    const existingOptions = config.provider[opencodeProvider].options || {};
-    config.provider[opencodeProvider].options = {
-      ...existingOptions,
-      apiKey: existingOptions.apiKey || opencodeProvider,
-    };
-  }
-  // REPLACE (not merge) the provider's models every startup so a renamed/removed
-  // model id can never linger as a stale entry — the provider owns this list.
-  config.provider[opencodeProvider].models = { ...models };
-  try {
-    if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
-  } catch (e) { log("opencode model merge failed: " + (e && e.message)); }
-}
-
-// Resolve the provider's catalog (live fetch -> cache -> empty) and write it into
-// opencode config. Run at plugin startup and again right after a login so newly
-// authed accounts populate the model list without waiting for the next start.
-async function refreshAndMerge(def): Promise<void> {
-  const opencodeProvider = def.opencodeProvider || "anthropic";
-  try {
-    const hasAccounts = listAccounts(def.id).length > 0;
-    const models = await resolveProviderModels(def, { configDir: getConfigDir(), log, hasAccounts }, Date.now());
-    mergeModels(opencodeProvider, models, def.opencodeNpm);
-    // compute + cache the provider's available Auto sort sources (manual is implicit;
-    // recommended is free with a ranking; leaderboard/custom are provider opt-ins).
-    const cache = readModelCache(def.id);
-    if (cache) {
-      const { sorts, sortOrders } = await computeSorts(def, cache.ranking || []);
-      writeModelCache(def.id, { ...cache, sorts, sortOrders });
-    }
-  } catch (e) { log("model refresh/merge failed: " + e); }
-}
+import { refreshModels } from "./refresh.js";
 
 // `oc auth login` for a provider with an account controller (in a TTY) opens our
 // interactive account-management TUI (runProviderMenu: list/add/remove/verify),
@@ -91,7 +24,7 @@ function authMethods(def) {
     authorize: async function () {
       if (def.accounts && isTTY()) {
         try { await runProviderMenu(def); } catch (e) { log("account menu failed: " + e); }
-        await refreshAndMerge(def);   // pull the now-authed account's live model catalog
+        await refreshModels(def);   // pull the now-authed account's live model catalog
         return { url: "", instructions: def.label + " accounts updated.", method: "auto", callback: async () => ({ type: "success", refresh: "core-auth", access: "", expires: 0 }) };
       }
       const flow = await def.loginFlow({ configDir: getConfigDir(), log });
@@ -103,7 +36,7 @@ function authMethods(def) {
           try {
             const account = await flow.complete(code);
             if (!account || !account.refresh) return { type: "failed" };
-            await refreshAndMerge(def);   // pull the now-authed account's live model catalog
+            await refreshModels(def);   // pull the now-authed account's live model catalog
             return { type: "success", refresh: account.refresh, access: account.access || "", expires: account.expires || 0 };
           } catch (error) { log("oauth login failed: " + error); return { type: "failed" }; }
         },
@@ -115,7 +48,7 @@ function authMethods(def) {
 export function createOpencodePlugin(def) {
   const opencodeProvider = def.opencodeProvider || "anthropic";
   return async function (input) {
-    await refreshAndMerge(def);
+    await refreshModels(def);
     // when accounts already exist, seed opencode's auth entry so it routes through our loader without the user running `oc auth login`
     try {
       const client = input && input.client;
