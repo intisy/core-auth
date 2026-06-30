@@ -79,6 +79,17 @@ export async function resolveProviderModels(def, ctx, nowMs) {
     return cached ? cached.models : {};
   }
 
+  // Generic "Auto" model: any multi-model provider automatically gets one — it resolves
+  // at request time to the top of its Auto ranking (the provider's request handler does
+  // the rewrite via getAutoCandidates). Skip if the provider already defines its own Auto
+  // (antigravity keeps its thinking-level variants), or if there's nothing to choose from
+  // (single-model providers like stub). NOT added to `ranking`, so Auto never resolves to
+  // itself.
+  const autoId = providerId + "-auto";
+  if (!catalog.models[autoId] && (catalog.ranking || []).length > 1) {
+    catalog.models = { [autoId]: { name: "Auto" }, ...catalog.models };
+  }
+
   // preserve any previously computed sort metadata; refreshModels updates it.
   const prev = readModelCache(providerId) || {};
   writeModelCache(providerId, {
