@@ -151,13 +151,28 @@ export async function computeLeaderboardOrder(candidateIds: string[]): Promise<s
     return best;
   };
 
-  const scored = candidateIds.map((id, i) => ({ id, i, score: scoreFor(id) }));
+  // Variants of one base model (e.g. "Gemini 3.1 Pro (Low)" / "(High)") share a base
+  // score, so they tie. Break the tie by effort so the higher-effort/thinking variant
+  // always ranks above its lower counterpart. Higher number = ranked higher.
+  const effortRank = (id: string): number => {
+    const s = String(id).toLowerCase();
+    if (/(^|[^a-z])thinking([^a-z]|$)/.test(s)) return 6;
+    if (/extra[\s_-]?low/.test(s)) return 1;
+    if (/(^|[^a-z])high([^a-z]|$)/.test(s)) return 5;
+    if (/(^|[^a-z])medium([^a-z]|$)/.test(s)) return 4;
+    if (/(^|[^a-z])low([^a-z]|$)/.test(s)) return 2;
+    if (/(^|[^a-z])minimal([^a-z]|$)/.test(s)) return 1;
+    return 3;   // normal / no effort suffix
+  };
+
+  const scored = candidateIds.map((id, i) => ({ id, i, score: scoreFor(id), effort: effortRank(id) }));
+  const byEffortThenCatalog = (a, b) => (b.effort - a.effort) || (a.i - b.i);
   return scored
     .sort((a, b) => {
-      if (a.score >= 0 && b.score >= 0) return (b.score - a.score) || (a.i - b.i);
+      if (a.score >= 0 && b.score >= 0) return (b.score - a.score) || byEffortThenCatalog(a, b);
       if (a.score >= 0) return -1;       // scored before unscored
       if (b.score >= 0) return 1;
-      return a.i - b.i;                   // both unscored: keep catalog order
+      return byEffortThenCatalog(a, b);  // both unscored: effort, then catalog order
     })
     .map((s) => s.id);
 }
