@@ -81,10 +81,14 @@ export async function refreshModels(def, forceOpencodeMerge = false): Promise<Re
   try {
     const hasAccounts = listAccounts(def.id).length > 0;
     models = await resolveProviderModels(def, { configDir: getConfigDir(), log, hasAccounts }, Date.now());
-    // compute + cache the provider's Auto sort sources (recommended/leaderboard/etc.)
+    // compute + cache the provider's Auto sort sources (leaderboard/custom). The
+    // leaderboard ranks by DISPLAY NAME, so pass id->name from the catalog (the raw
+    // catalog id is opaque and carries neither the model name nor the effort marker).
     const cache = readModelCache(def.id);
     if (cache) {
-      const { sorts, sortOrders } = await computeSorts(def, cache.ranking || []);
+      const catalogModels = (cache.models || models || {}) as Record<string, { name?: string }>;
+      const nameOf = (id: string) => (catalogModels[id] && catalogModels[id].name) || id;
+      const { sorts, sortOrders } = await computeSorts(def, cache.ranking || [], nameOf);
       writeModelCache(def.id, { ...cache, sorts, sortOrders });
     }
     if (forceOpencodeMerge || isOpencodeHost()) mergeModels(def.opencodeProvider || "anthropic", models, def.opencodeNpm);

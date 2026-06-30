@@ -14,7 +14,9 @@ import { log } from "./log.js";
 
 const BUILTIN_LABEL = { leaderboard: "Leaderboard (quality)" };
 
-export async function computeSorts(def, ranking) {
+// nameOf maps a catalog id -> its display name; the leaderboard ranks by NAME (the id
+// is an opaque API rawId). Defaults to identity when names aren't available.
+export async function computeSorts(def, ranking, nameOf = (id) => id) {
   const ids = Array.isArray(ranking) ? ranking : [];
   const sorts = [];                 // [{ id, label }] — offered sources beyond manual
   const sortOrders = {};            // { id: [modelId] } — precomputed order per source
@@ -24,7 +26,7 @@ export async function computeSorts(def, ranking) {
       if (entry === "leaderboard" || (entry && entry.id === "leaderboard")) {
         if (!ids.length) continue;
         sorts.push({ id: "leaderboard", label: BUILTIN_LABEL.leaderboard });
-        sortOrders.leaderboard = await computeLeaderboardOrder(ids);
+        sortOrders.leaderboard = await computeLeaderboardOrder(ids, nameOf);
       } else if (entry && typeof entry === "object" && entry.id && typeof entry.compute === "function") {
         sorts.push({ id: entry.id, label: entry.label || entry.id });
         const order = await entry.compute(ids);

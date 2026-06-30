@@ -125,54 +125,68 @@ async function getScores(): Promise<Score[]> {
 
 // ---- public order -----------------------------------------------------------
 
+// effort/variant weight (higher ranks higher), read from a model's DISPLAY NAME which
+// reliably carries "(Thinking)"/"(High)"/… — the catalog id is an opaque API rawId.
+function effortRank(text: string): number {
+  const s = String(text).toLowerCase();
+  if (/(^|[^a-z])thinking([^a-z]|$)/.test(s)) return 6;
+  if (/extra[\s_-]?low/.test(s)) return 1;
+  if (/(^|[^a-z])high([^a-z]|$)/.test(s)) return 5;
+  if (/(^|[^a-z])medium([^a-z]|$)/.test(s)) return 4;
+  if (/(^|[^a-z])low([^a-z]|$)/.test(s)) return 2;
+  if (/(^|[^a-z])minimal([^a-z]|$)/.test(s)) return 1;
+  return 3;   // normal / no effort marker
+}
+
+// base matching key from a display name: drop ALL parenthetical tags — the effort
+// "(High)" and the provider label "(Antigravity)" — then normalize. Variants of one
+// model collapse to the same key (so they group + share a score).
+function baseKeyFromName(text: string): string {
+  return normalize(String(text).replace(/\([^)]*\)/g, " "));
+}
+
 /**
  * Returns `candidateIds` sorted best-first by live quality score (OpenRouter's
- * intelligence_index, keyless; or AA when a key is set). Models with no match keep
- * their catalog order and are placed after scored ones. If no live data is available
- * (offline, no cache), returns the catalog order unchanged — never a fabricated rank.
+ * intelligence_index, keyless; or AA when a key is set). `nameOf` maps a catalog id to
+ * its display name; matching + effort are derived from the NAME (the id is an opaque
+ * API rawId that doesn't carry the model name or effort). Variants of one model group
+ * together at the base score, ordered by effort among themselves; effort never decides
+ * order between different models. With no live data (offline, no cache) the catalog
+ * order is preserved (variants still effort-ordered within a base) — never fabricated.
  */
-export async function computeLeaderboardOrder(candidateIds: string[]): Promise<string[]> {
+export async function computeLeaderboardOrder(
+  candidateIds: string[],
+  nameOf: (id: string) => string = (id) => id,
+): Promise<string[]> {
   const scores = await getScores();
-  if (!scores.length) return candidateIds.slice();
-
-  // version-tolerant: an exact/substring norm match wins; otherwise fall back to a
-  // model-FAMILY match (digits stripped) so e.g. "claude-opus-4.6" still ranks by the
-  // live opus family's best score even when OpenRouter only lists opus 4.8.
   const stripVer = (n: string): string => n.replace(/[0-9]+/g, "");
-  const scoreFor = (id: string): number => {
-    const n = normalize(id);
+
+  // version-tolerant: exact/substring base-key match wins; else a digit-stripped FAMILY
+  // match so "Claude Opus 4.6" still ranks by the live opus family even if OpenRouter
+  // only lists Opus 4.8. -1 = no live score for this model.
+  const scoreFor = (key: string): number => {
+    if (!scores.length) return -1;
     let best = -1;
     for (const s of scores) {
-      if (s.norm === n || s.norm.includes(n) || n.includes(s.norm)) best = Math.max(best, s.score);
+      if (s.norm === key || s.norm.includes(key) || key.includes(s.norm)) best = Math.max(best, s.score);
     }
     if (best >= 0) return best;
-    const fn = stripVer(n);
-    if (fn.length < 4) return -1;   // too short to family-match safely
+    const fk = stripVer(key);
+    if (fk.length < 4) return -1;
     for (const s of scores) {
       const fs = stripVer(s.norm);
-      if (fs && (fs === fn || fs.includes(fn) || fn.includes(fs))) best = Math.max(best, s.score);
+      if (fs && (fs === fk || fs.includes(fk) || fk.includes(fs))) best = Math.max(best, s.score);
     }
     return best;
   };
 
-  // Variants of one base model (e.g. "Gemini 3.1 Pro (Low)" / "(High)") share a base
-  // score, so they tie. Break the tie by effort so the higher-effort/thinking variant
-  // always ranks above its lower counterpart. Higher number = ranked higher.
-  const effortRank = (id: string): number => {
-    const s = String(id).toLowerCase();
-    if (/(^|[^a-z])thinking([^a-z]|$)/.test(s)) return 6;
-    if (/extra[\s_-]?low/.test(s)) return 1;
-    if (/(^|[^a-z])high([^a-z]|$)/.test(s)) return 5;
-    if (/(^|[^a-z])medium([^a-z]|$)/.test(s)) return 4;
-    if (/(^|[^a-z])low([^a-z]|$)/.test(s)) return 2;
-    if (/(^|[^a-z])minimal([^a-z]|$)/.test(s)) return 1;
-    return 3;   // normal / no effort suffix
-  };
-
-  const scored = candidateIds.map((id, i) => ({ id, i, score: scoreFor(id), effort: effortRank(id), base: normalize(id) }));
-  // Effort ONLY decides order between variants of the SAME base model (e.g. Flash High
-  // vs Flash Low) — never between different models. Different models that happen to tie
-  // on score keep catalog order; effort does not cross-influence them.
+  const scored = candidateIds.map((id, i) => {
+    const name = nameOf(id);
+    const base = baseKeyFromName(name);
+    return { id, i, base, effort: effortRank(name), score: scoreFor(base) };
+  });
+  // Effort ONLY decides order between variants of the SAME base model — never between
+  // different models (those keep score order, then catalog order).
   const tie = (a, b) => (a.base === b.base ? (b.effort - a.effort) : 0) || (a.i - b.i);
   return scored
     .sort((a, b) => {
