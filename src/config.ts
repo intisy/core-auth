@@ -50,14 +50,19 @@ export function setActiveProvider(name: string): void {
 // (recommended, leaderboard, custom) is provider-defined and advertised in the
 // model cache as { id, label } with a precomputed order in sortOrders.
 
-// Available sources for a provider: always manual, plus whatever the cache advertises.
-// "recommended" was removed as a source; filter it out defensively so a pre-existing
-// core-auth-models.json (written before the removal) can't keep surfacing it until the
-// next model refresh rewrites the cache.
+// Sort source ids that USED to exist but were removed from the code. A cache written
+// by older code may still advertise them; filter them out by id so a retired source can
+// never keep surfacing from a stale core-auth-models.json after an update — WITHOUT
+// wiping the whole derived cache (which would also hide still-valid sources like
+// "leaderboard" until the next refresh). When you retire a sort source, add its id here.
+const RETIRED_SOURCES = new Set<string>(["recommended"]);
+
+// Available sources for a provider: always manual, plus whatever the cache advertises
+// (minus any retired ids).
 export function getAutoSources(providerId: string): Array<{ id: string; label: string }> {
   const cache = readModelCache(providerId);
   const extra = (cache && Array.isArray(cache.sorts) ? cache.sorts : [])
-    .filter((s) => s && s.id && s.id !== "recommended");
+    .filter((s) => s && s.id && !RETIRED_SOURCES.has(s.id));
   return [{ id: "manual", label: "Manual" }, ...extra];
 }
 
