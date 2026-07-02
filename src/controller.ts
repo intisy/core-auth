@@ -11,6 +11,17 @@ function defaultStatus(account, now) {
   return "active";
 }
 
+// soonest epoch ms this account is usable again across ALL lanes (cooldown + every
+// per-lane rate-limit reset); `now` when already free, Infinity when disabled.
+function soonestAvailable(account, now) {
+  if (account.enabled === false) return Infinity;
+  let t = now;
+  if (typeof account.coolingDownUntil === "number") t = Math.max(t, account.coolingDownUntil);
+  const lanes = account.rateLimitResetTimes || {};
+  for (const reset of Object.values(lanes)) if (typeof reset === "number") t = Math.max(t, reset);
+  return t;
+}
+
 // opts: { status?(account,now), detail?(account,now), quota?(account), login(), refreshQuota?() }
 export function accountControllerFromManager(manager, opts) {
   const options = opts || {};
@@ -25,6 +36,7 @@ export function accountControllerFromManager(manager, opts) {
         status: options.status ? options.status(account, now) : defaultStatus(account, now),
         detail: options.detail ? options.detail(account, now) : undefined,
         quota: options.quota ? options.quota(account) : undefined,
+        availableAt: soonestAvailable(account, now),
       }));
     },
     enable(id, on) { manager.mutate(id, (account) => { account.enabled = !!on; }); },

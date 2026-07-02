@@ -127,6 +127,54 @@ function buildAccountDetail(def, view) {
 
 // ---- Top provider menu (accounts + actions) --------------------------------
 
+function fmtDur(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return s + "s";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + "m";
+  return Math.round(m / 60) + "h";
+}
+
+// Per-account quota/availability for the row hint: real per-pool remaining % when the
+// provider supplies quota, else availability ("free in Xs" / "available").
+function accountQuotaHint(view) {
+  if (Array.isArray(view.quota) && view.quota.length) {
+    const pools = view.quota
+      .filter((q) => q && typeof q.remainingFraction === "number")
+      .map((q) => q.label + " " + Math.round(q.remainingFraction * 100) + "%");
+    if (pools.length) return pools.join(" · ");
+  }
+  const now = Date.now();
+  if (typeof view.availableAt === "number" && view.availableAt > now) return "free in " + fmtDur(view.availableAt - now);
+  if (view.status === "active") return "available";
+  return "";
+}
+
+// One-line combined summary across all enabled accounts: how many are usable now, when
+// the next one frees up, and (when real quota exists) the average remaining per pool.
+function combinedQuotaLine(views) {
+  const now = Date.now();
+  const enabled = views.filter((v) => v.enabled !== false);
+  if (!enabled.length) return "";
+  const unavailable = enabled.filter((v) => typeof v.availableAt === "number" && v.availableAt > now);
+  let line = (enabled.length - unavailable.length) + "/" + enabled.length + " available";
+  if (unavailable.length) {
+    const next = Math.min.apply(null, unavailable.map((v) => v.availableAt));
+    if (isFinite(next)) line += " · next free in " + fmtDur(next - now);
+  }
+  const pools = {};
+  for (const v of enabled) {
+    if (!Array.isArray(v.quota)) continue;
+    for (const q of v.quota) if (q && typeof q.remainingFraction === "number") (pools[q.label] = pools[q.label] || []).push(q.remainingFraction);
+  }
+  const poolKeys = Object.keys(pools);
+  if (poolKeys.length) {
+    const poolStr = poolKeys.map((k) => { const a = pools[k]; return k + " " + Math.round(a.reduce((x, y) => x + y, 0) / a.length * 100) + "% avg"; }).join(" · ");
+    line += "  ·  " + poolStr;
+  }
+  return line;
+}
+
 export function buildAccountMenu(def) {
   const controller = def.accounts;
   const proxies = !!def.proxies;
@@ -157,8 +205,11 @@ export function buildAccountMenu(def) {
   });
   items.push({ label: "", separator: true });
   items.push({ label: `Accounts (${views.length})`, kind: "heading" });
+  const combined = combinedQuotaLine(views);
+  if (combined) items.push({ label: combined, kind: "heading" });
   for (const view of views) {
-    items.push({ label: `${view.email || view.id}${STATUS[view.status] ? " " + STATUS[view.status] : ""}`, hint: view.detail || "", run: () => ({ push: () => buildAccountDetail(def, view) }) });
+    const hint = [view.detail, accountQuotaHint(view)].filter(Boolean).join(" · ");
+    items.push({ label: `${view.email || view.id}${STATUS[view.status] ? " " + STATUS[view.status] : ""}`, hint: hint, run: () => ({ push: () => buildAccountDetail(def, view) }) });
   }
   if (views.length > 0) { items.push({ label: "", separator: true }); items.push({ label: "Delete all accounts", color: "red", suspend: true, run: async () => { if (await confirm("Delete ALL accounts? This cannot be undone.")) { for (const v of controller.list()) controller.remove(v.id); } return { refresh: true }; } }); }
 
